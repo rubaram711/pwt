@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(touch \"C:/Users/infobank/StudioProjects/pwt_website/lib/Models/Auth/verify_reset_otp_response.dart\")",
+      "Bash(touch \"C:/Users/infobank/StudioProjects/pwt_website/lib/Backend/Auth/verify_reset_otp.dart\")",
+      "Bash(curl -s -w '\\\\nHTTP_STATUS:%{http_code}\\\\n' http://51.20.3.200/api/v1/payments/1/status)",
+      "Bash(curl -s -w '\\\\nHTTP_STATUS:%{http_code}\\\\n' -H \"Accept: application/json\" http://51.20.3.200/api/v1/payments/22/status)",
+      "Bash(flutter analyze *)",
+      "Bash(flutter pub *)",
+      "Bash(flutter clean *)",
+      "Bash(grep -v -E \"^\\\\./build/|^\\\\./\\\\.git/\")",
+      "Bash(python3 -c \"from PIL import Image; im=Image.open\\('assets/new_logo.png'\\); print\\(im.size, im.mode\\)\")",
+      "Bash(python -c \"from PIL import Image; im=Image.open\\('assets/new_logo.png'\\); print\\(im.size, im.mode\\)\")",
+      "Bash(magick -version)",
+      "Bash(convert -version)",
+      "Bash(flutter --version)",
+      "Bash(dart --version)",
+      "Bash(dart run *)",
+      "WebFetch(domain:pub.dev)",
+      "Bash(curl -sv --max-time 10 \"https://13.61.48.209/api/v1/countries\" -o /tmp/countries_out.json -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\")",
+      "Bash(curl -sk -v --max-time 10 \"https://13.61.48.209/api/v1/countries\" -o /tmp/countries_out.json -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\")"
+    ]
+  }
+}

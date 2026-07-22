@@ -1,0 +1,83 @@
+name: pwt_website
+description: "A new Flutter project."
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  dio: ^5.8.0+1
+  # Routing
+  go_router: ^14.2.0
+
+  # Persistence (replaces localStorage)
+  shared_preferences: ^2.2.3
+
+  # Number / date formatting (also gives us Bidi helpers for RTL)
+  intl:
+
+  # Google Fonts — site uses Geist + Geist Mono; intl Arabic uses Tajawal
+  google_fonts: ^6.2.1
+
+  # SVG support for the dirham glyph
+  flutter_svg: ^2.0.10
+
+  cupertino_icons: ^1.0.8
+
+  provider: ^6.1.2
+
+  google_sign_in: ^7.2.0
+
+  url_launcher: ^6.3.1
+
+  email_validator: ^3.0.0
+
+  flutter_libphonenumber: ^2.7.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^5.0.0
+
+  flutter_launcher_icons: ^0.14.4
+
+
+flutter:
+
+  uses-material-design: true
+
+  assets:
+    - assets/logo.png
+    - assets/pwt-logo.png
+    - assets/new_logo.png
+    - assets/dirham.svg
+    - assets/products/pw50.png
+    - assets/products/pw90.png
+    - assets/products/pw90ct.png
+    - assets/products/ct.png
+    - assets/products/s4.png
+    - assets/images/
+
+flutter_launcher_icons:
+  image_path: "assets/new_logo_square_white.png"
+  android: "ic_launcher"
+  ios: true
+  remove_alpha_ios: true
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/new_logo_adaptive_fg.png"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "assets/new_logo_square_transparent.png"
+    background_color: "#1D4ED8"
+    theme_color: "#1D4ED8"
