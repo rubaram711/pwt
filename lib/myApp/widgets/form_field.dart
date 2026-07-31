@@ -158,8 +158,9 @@ class ModeTabs extends StatelessWidget {
         onTap: () => onChanged(val),
         child: AnimatedContainer(
           duration: PwtMotion.fast,
-          height: 44,
+          constraints: const BoxConstraints(minHeight: 44),
           margin: const EdgeInsets.symmetric(horizontal: 1),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
           decoration: BoxDecoration(
             color: on ? PwtColors.surface : Colors.transparent,
             borderRadius: BorderRadius.circular(11),
@@ -171,7 +172,15 @@ class ModeTabs extends StatelessWidget {
             children: [
               Icon(icon, size: 15, color: on ? PwtColors.brand : PwtColors.textTer),
               const SizedBox(width: 8),
-              Text(label, style: TextStyle(fontSize: 13.5, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? PwtColors.brand : PwtColors.textSec)),
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? PwtColors.brand : PwtColors.textSec),
+                ),
+              ),
             ],
           ),
         ),

@@ -111,17 +111,20 @@ class DetailScaffold extends StatelessWidget {
     required this.body,
     this.bottomBar,
     this.onBack,
+    this.floatingActionButton,
   });
 
   final String? title;
   final Widget body;
   final Widget? bottomBar;
   final VoidCallback? onBack;
+  final Widget? floatingActionButton;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: PwtColors.bg,
+      floatingActionButton: floatingActionButton,
       body: SafeArea(
         child: Column(
           children: [

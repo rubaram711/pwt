@@ -53,8 +53,10 @@ class BusinessShell extends StatefulWidget {
 
 class _BusinessShellState extends State<BusinessShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  String _tab = 'devices';
-  int _requestVersion = 0;
+  final _productsKey = GlobalKey<ProductsScreenState>();
+  final _ordersKey = GlobalKey<_BusinessOrdersScreenState>();
+  final _requestsKey = GlobalKey<_BusinessRequestsScreenState>();
+  String _tab = 'home';
   List<MachineModel> _machines = [];
   bool _loadingMachines = true;
   bool _loadingMoreMachines = false;
@@ -63,18 +65,28 @@ class _BusinessShellState extends State<BusinessShell> {
   int _statRented = 0;
   int _statPurchased = 0;
   String? _machineStatus; // null = all, 'rented', 'purchased'
+  String? _machinesError;
 
   @override
   void initState() {
     super.initState();
     _loadMachines();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final appState = context.read<AppState>();
+      final pending = appState.pendingProduct;
+      if (pending != null) {
+        appState.clearPendingProduct();
+        _push(ProductDetailScreen(product: pending, role: AccountKind.business));
+      }
+    });
   }
 
   Future<void> _loadMachines({int page = 1, bool append = false}) async {
     if (append) {
       setState(() => _loadingMoreMachines = true);
     } else {
-      setState(() => _loadingMachines = true);
+      setState(() { _loadingMachines = true; _machinesError = null; });
     }
     final res = await getMachines(page: page, status: _machineStatus);
     if (!mounted) return;
@@ -84,10 +96,13 @@ class _BusinessShellState extends State<BusinessShell> {
         _machines = append ? [..._machines, ...res.data!.items] : res.data!.items;
         _machinesPagination = res.data!.pagination;
         _machinesPage = page;
+        _machinesError = null;
         if (stats != null) {
           _statRented    = stats['rented'] as int? ?? 0;
           _statPurchased = stats['purchased'] as int? ?? 0;
         }
+      } else if (!append) {
+        _machinesError = res.message ?? res.error ?? 'Failed to load machines. Please check your connection and try again.';
       }
       _loadingMachines = false;
       _loadingMoreMachines = false;
@@ -136,23 +151,31 @@ class _BusinessShellState extends State<BusinessShell> {
     final submitted = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => ScheduleMaintenanceScreen(presetMachines: presetMachines ?? const [])),
     );
-    if (submitted == true) setState(() => _requestVersion++);
+    if (submitted == true) _requestsKey.currentState?.reload();
   }
 
   @override
   Widget build(BuildContext context) {
     final s = Strings.of(context.watch<AppState>().lang);
-    final tabs = ['devices', 'requests', 'orders', 'products'];
+    final tabs = ['home', 'devices', 'requests', 'orders', 'products'];
 
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: PwtColors.bg,
       endDrawer: ProfileDrawer(user: _user, onSelect: _onDrawerSelect),
+      floatingActionButton: const WhatsAppFab(),
       body: SafeArea(
         bottom: false,
         child: IndexedStack(
           index: tabs.indexOf(_tab),
           children: [
+            _BusinessHomeTab(
+              user: _user,
+              onProfile: () => _scaffoldKey.currentState?.openEndDrawer(),
+              onMachines: () => setState(() => _tab = 'devices'),
+              onOrders: () => setState(() => _tab = 'orders'),
+              onExplore: () => setState(() => _tab = 'products'),
+            ),
             widget.isNew
                 ? _BusinessEmpty(user: _user, onProfile: () => _scaffoldKey.currentState?.openEndDrawer(), onBrowse: () => setState(() => _tab = 'products'))
                 : BusinessDevicesScreen(
@@ -160,6 +183,8 @@ class _BusinessShellState extends State<BusinessShell> {
                     machines: _machines,
                     loading: _loadingMachines,
                     loadingMore: _loadingMoreMachines,
+                    errorMsg: _machinesError,
+                    onRetry: () => _loadMachines(),
                     rented: _statRented,
                     purchased: _statPurchased,
                     statusFilter: _machineStatus,
@@ -171,16 +196,18 @@ class _BusinessShellState extends State<BusinessShell> {
                         : null,
                   ),
             BusinessRequestsScreen(
-              key: ValueKey(_requestVersion),
+              key: _requestsKey,
               user: _user,
               onProfile: () => _scaffoldKey.currentState?.openEndDrawer(),
               onSchedule: () => _openSchedule(),
             ),
             BusinessOrdersScreen(
+              key: _ordersKey,
               user: _user,
               onProfile: () => _scaffoldKey.currentState?.openEndDrawer(),
             ),
             ProductsScreen(
+              key: _productsKey,
               user: _user,
               role: AccountKind.business,
               onProfile: () => _scaffoldKey.currentState?.openEndDrawer(),
@@ -193,14 +220,154 @@ class _BusinessShellState extends State<BusinessShell> {
         active: _tab,
         onChanged: (k) {
           setState(() => _tab = k);
-          if (k == 'devices') _loadMachines();
+          if (k == 'devices' && _machinesError != null) _loadMachines();
+          if (k == 'products') _productsKey.currentState?.retryIfFailed();
+          if (k == 'orders') _ordersKey.currentState?.retryIfFailed();
+          if (k == 'requests') _requestsKey.currentState?.retryIfFailed();
         },
         items: [
+          PwtNavItem(key: 'home', label: s['home']!, icon: Icons.home_outlined),
+          PwtNavItem(key: 'products', label: s['shop']!, icon: PwtIcons.cube),
           PwtNavItem(key: 'devices', label: s['devices']!, icon: PwtIcons.drop),
           PwtNavItem(key: 'requests', label: s['requests']!, icon: PwtIcons.wrench),
           PwtNavItem(key: 'orders', label: s['orders']!, icon: PwtIcons.orders),
-          PwtNavItem(key: 'products', label: s['shop']!, icon: PwtIcons.cube),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Home tab: hero (ported from myWeb2's storefront hero) + quick actions ───
+class _BusinessHomeTab extends StatelessWidget {
+  const _BusinessHomeTab({required this.user, required this.onProfile, required this.onMachines, required this.onOrders, this.onExplore});
+  final AppUser user;
+  final VoidCallback onProfile;
+  final VoidCallback onMachines;
+  final VoidCallback onOrders;
+  final VoidCallback? onExplore;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final s = Strings.of(app.lang);
+    final ar = app.isArabic;
+    final firstName = user.name.trim().isNotEmpty ? user.name.trim().split(' ').first : '';
+
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        AppHeader(user: user, onProfile: onProfile),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (firstName.isNotEmpty) ...[
+                Text.rich(
+                  TextSpan(
+                    style: PwtType.headline(arabic: ar).copyWith(fontSize: 20, height: 1.3),
+                    children: [
+                      TextSpan(text: '${s['hello']!}\n', style: const TextStyle(fontWeight: FontWeight.w400, fontSize: 14)),
+                      TextSpan(text: '$firstName 👋'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+              Row(
+                children: [
+                  const Icon(PwtIcons.drop, size: 16, color: PwtColors.brand),
+                  const SizedBox(width: 6),
+                  Text(s['pureWaterPureLife']!, style: PwtType.eyebrow(color: PwtColors.brand).copyWith(fontSize: 12, fontWeight: FontWeight.w700)),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text.rich(
+                TextSpan(
+                  style: PwtType.headline(arabic: ar).copyWith(fontSize: 27, height: 1.2),
+                  children: [
+                    TextSpan(text: s['homeHeadlinePlain']!),
+                    TextSpan(text: s['homeHeadlineAccent']!, style: const TextStyle(color: PwtColors.brand)),
+                    TextSpan(text: ' ${s['homeHeadlineTail']!}'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(s['homeHeroSub']!, style: PwtType.body(color: PwtColors.textSec, arabic: ar).copyWith(fontSize: 13.5, height: 1.55)),
+              const SizedBox(height: 16),
+              PwtButton(label: s['exploreProducts']!, trailing: PwtIcons.arrow, onPressed: onExplore),
+              const SizedBox(height: 18),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Image.asset(
+                  'assets/images/podium-hero.png',
+                  height: 210,
+                  width: double.infinity,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const SizedBox(height: 210),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+          child: Column(
+            children: [
+              _HomeQuickActionCard(icon: PwtIcons.drop, title: s['devices']!, subtitle: s['devicesQaSub']!, onTap: onMachines),
+              const SizedBox(height: 12),
+              _HomeQuickActionCard(icon: PwtIcons.orders, title: s['orders']!, subtitle: s['ordersQaSub']!, onTap: onOrders, color: PwtColors.success),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HomeQuickActionCard extends StatelessWidget {
+  const _HomeQuickActionCard({required this.icon, required this.title, required this.subtitle, this.onTap, this.color = PwtColors.brand});
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: PwtColors.surface,
+          border: Border.all(color: PwtColors.hairline),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 20, color: color),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: PwtType.label(weight: FontWeight.w700).copyWith(fontSize: 14.5)),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: PwtType.caption(color: PwtColors.textSec).copyWith(fontSize: 12)),
+                ],
+              ),
+            ),
+            const Icon(PwtIcons.caret, size: 16, color: PwtColors.textTer),
+          ],
+        ),
       ),
     );
   }
@@ -208,11 +375,13 @@ class _BusinessShellState extends State<BusinessShell> {
 
 // ─── Fleet ───
 class BusinessDevicesScreen extends StatelessWidget {
-  const BusinessDevicesScreen({super.key, required this.user, required this.machines, required this.loading, this.loadingMore = false, required this.rented, required this.purchased, this.statusFilter, this.onFilterChange, required this.onProfile, required this.onMaintenance, this.onLoadMore});
+  const BusinessDevicesScreen({super.key, required this.user, required this.machines, required this.loading, this.loadingMore = false, this.errorMsg, this.onRetry, required this.rented, required this.purchased, this.statusFilter, this.onFilterChange, required this.onProfile, required this.onMaintenance, this.onLoadMore});
   final AppUser user;
   final List<MachineModel> machines;
   final bool loading;
   final bool loadingMore;
+  final String? errorMsg;
+  final VoidCallback? onRetry;
   final int rented;
   final int purchased;
   final String? statusFilter;
@@ -248,7 +417,7 @@ class BusinessDevicesScreen extends StatelessWidget {
                 child: Row(
                   children: [
                     _stat(s['devicesCount']!, Text('$total', style: _statStyle), '${s['rent']} · ${s['buy']}'),
-                    _stat(s['rent']!, Text('$rented', style: _statStyle.copyWith(color: rented > 0 ? PwtColors.brand : PwtColors.textTer)), 'rented devices', divider: true),
+                    _stat(s['rent']!, Text('$rented', style: _statStyle.copyWith(color: rented > 0 ? PwtColors.brand : PwtColors.textTer)), 'rented machines', divider: true),
                     _stat(s['buy']!, Text('$purchased', style: _statStyle.copyWith(color: purchased > 0 ? PwtColors.success : PwtColors.textTer)), 'purchased', divider: true),
                   ],
                 ),
@@ -290,7 +459,38 @@ class BusinessDevicesScreen extends StatelessWidget {
               : machines.isEmpty
                   ? Padding(
                       padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: Center(child: Text('No devices found.', style: PwtType.body(color: PwtColors.textSec))),
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 88,
+                            height: 88,
+                            decoration: BoxDecoration(
+                              color: errorMsg != null ? PwtColors.error.withValues(alpha: 0.1) : PwtColors.brandTint,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: errorMsg != null ? PwtColors.error : PwtColors.brandBorder),
+                            ),
+                            child: Icon(errorMsg != null ? PwtIcons.warn : PwtIcons.drop, size: 36, color: errorMsg != null ? PwtColors.error : PwtColors.brand),
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            errorMsg != null ? s['devicesLoadError']! : (statusFilter == null ? s['noDevicesYet']! : 'No machines match this filter'),
+                            style: PwtType.title().copyWith(fontSize: 18),
+                          ),
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Text(
+                              errorMsg != null ? s['devicesLoadErrorSub']! : (statusFilter == null ? s['noDevicesSub']! : 'Try a different filter.'),
+                              textAlign: TextAlign.center,
+                              style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13),
+                            ),
+                          ),
+                          if (errorMsg != null && onRetry != null) ...[
+                            const SizedBox(height: 18),
+                            PwtButton(label: s['retry']!, variant: PwtButtonVariant.soft, onPressed: onRetry),
+                          ],
+                        ],
+                      ),
                     )
                   : Column(
                       children: [
@@ -460,6 +660,17 @@ class _BusinessRequestsScreenState extends State<BusinessRequestsScreen> {
   bool _loadingMore = false;
   int _page = 1;
   PaginationModel? _pagination;
+  String? _error;
+
+  /// Called by the shell when this tab is reselected — re-fetches only if
+  /// the last attempt failed.
+  void retryIfFailed() {
+    if (_error != null) _load();
+  }
+
+  /// Called by the shell right after a new maintenance request is
+  /// submitted, so the freshly-created request shows up in the list.
+  void reload() => _load();
 
   @override
   void initState() {
@@ -471,7 +682,7 @@ class _BusinessRequestsScreenState extends State<BusinessRequestsScreen> {
     if (append) {
       setState(() => _loadingMore = true);
     } else {
-      setState(() { _loading = true; _requests = []; });
+      setState(() { _loading = true; _requests = []; _error = null; });
     }
     final res = await getMaintenanceRequests(page: page);
     if (!mounted) return;
@@ -480,6 +691,9 @@ class _BusinessRequestsScreenState extends State<BusinessRequestsScreen> {
         _requests = append ? [..._requests, ...res.data!.items] : res.data!.items;
         _pagination = res.data!.pagination;
         _page = page;
+        _error = null;
+      } else if (!append) {
+        _error = res.message ?? res.error ?? 'Failed to load requests. Please check your connection and try again.';
       }
       _loading = false;
       _loadingMore = false;
@@ -519,15 +733,22 @@ class _BusinessRequestsScreenState extends State<BusinessRequestsScreen> {
                 Container(
                   width: 110,
                   height: 110,
-                  decoration: BoxDecoration(color: PwtColors.brandTint, shape: BoxShape.circle, border: Border.all(color: PwtColors.brandBorder)),
-                  child: const Icon(PwtIcons.wrench, size: 48, color: PwtColors.brand),
+                  decoration: BoxDecoration(
+                    color: _error != null ? PwtColors.error.withValues(alpha: 0.1) : PwtColors.brandTint,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _error != null ? PwtColors.error : PwtColors.brandBorder),
+                  ),
+                  child: Icon(_error != null ? PwtIcons.warn : PwtIcons.wrench, size: 48, color: _error != null ? PwtColors.error : PwtColors.brand),
                 ),
                 const SizedBox(height: 22),
-                Text(s['noRequestsYet']!, style: PwtType.title().copyWith(fontSize: 22)),
+                Text(_error != null ? s['requestsLoadError']! : s['noRequestsYet']!, style: PwtType.title().copyWith(fontSize: 22)),
                 const SizedBox(height: 8),
-                Text(s['noRequestsSub']!, textAlign: TextAlign.center, style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13.5)),
+                Text(_error != null ? s['requestsLoadErrorSub']! : s['noRequestsSub']!, textAlign: TextAlign.center, style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13.5)),
                 const SizedBox(height: 24),
-                PwtButton(label: s['scheduleMaintenance']!, full: true, icon: PwtIcons.plus, onPressed: widget.onSchedule),
+                if (_error != null)
+                  PwtButton(label: s['retry']!, full: true, onPressed: () => _load())
+                else
+                  PwtButton(label: s['scheduleMaintenance']!, full: true, icon: PwtIcons.plus, onPressed: widget.onSchedule),
               ],
             ),
           )
@@ -695,11 +916,18 @@ class _BusinessOrdersScreenState extends State<BusinessOrdersScreen> {
   List<OrderModel> _orders = [];
   int _page = 1;
   PaginationModel? _pagination;
+  String? _errorMsg;
 
   static const _statusFilters = <String?>[null, 'pending', 'completed', 'cancelled'];
   static const _statusFilterLabels = ['All', 'Pending', 'Completed', 'Cancelled'];
 
   static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  /// Called by the shell when this tab is reselected — re-fetches only if
+  /// the last attempt failed.
+  void retryIfFailed() {
+    if (_errorMsg != null) _load();
+  }
 
   @override
   void initState() {
@@ -711,7 +939,7 @@ class _BusinessOrdersScreenState extends State<BusinessOrdersScreen> {
     if (append) {
       setState(() => _loadingMore = true);
     } else {
-      setState(() { _loading = true; _orders = []; });
+      setState(() { _loading = true; _orders = []; _errorMsg = null; });
     }
     final res = await getOrders(page: page, status: _statusFilter, sort: 'created_at', order: _sortDesc ? 'desc' : 'asc');
     if (!mounted) return;
@@ -724,6 +952,9 @@ class _BusinessOrdersScreenState extends State<BusinessOrdersScreen> {
         }
         _pagination = res.data!.pagination;
         _page = page;
+        _errorMsg = null;
+      } else if (!append) {
+        _errorMsg = res.message ?? res.error ?? 'Failed to load orders. Please check your connection and try again.';
       }
       _loading = false;
       _loadingMore = false;
@@ -828,6 +1059,40 @@ class _BusinessOrdersScreenState extends State<BusinessOrdersScreen> {
             child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: PwtColors.brand)),
           )
         else
+          if (_orders.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(30, 40, 30, 24),
+              child: Column(
+                children: [
+                  Container(
+                    width: 96,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      color: _errorMsg != null ? PwtColors.error.withValues(alpha: 0.1) : PwtColors.brandTint,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: _errorMsg != null ? PwtColors.error : PwtColors.brandBorder),
+                    ),
+                    child: Icon(_errorMsg != null ? PwtIcons.warn : PwtIcons.orders, size: 40, color: _errorMsg != null ? PwtColors.error : PwtColors.brand),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    _errorMsg != null ? s['ordersLoadError']! : (_statusFilter == null ? s['noOrdersYet']! : s['noOrdersFiltered']!),
+                    style: PwtType.title().copyWith(fontSize: 20),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _errorMsg != null ? s['ordersLoadErrorSub']! : (_statusFilter == null ? s['noOrdersSub']! : s['noOrdersFilteredSub']!),
+                    textAlign: TextAlign.center,
+                    style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13.5),
+                  ),
+                  if (_errorMsg != null) ...[
+                    const SizedBox(height: 20),
+                    PwtButton(label: s['retry']!, variant: PwtButtonVariant.soft, onPressed: () => _load()),
+                  ],
+                ],
+              ),
+            )
+          else
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
             child: Column(
@@ -1004,6 +1269,7 @@ class _ScheduleMaintenanceScreenState extends State<ScheduleMaintenanceScreen> {
   bool _loadingMoreMachines = false;
   int _machinesPage = 1;
   PaginationModel? _machinesPagination;
+  String? _machinesError;
   MachineModel? _selectedMachine;
   DateTime? _selectedDate;
   int _slot = 0;
@@ -1036,7 +1302,7 @@ class _ScheduleMaintenanceScreenState extends State<ScheduleMaintenanceScreen> {
     if (append) {
       setState(() => _loadingMoreMachines = true);
     } else {
-      setState(() => _loadingMachines = true);
+      setState(() { _loadingMachines = true; _machinesError = null; });
     }
     final res = await getMachines(page: page);
     if (!mounted) return;
@@ -1045,6 +1311,9 @@ class _ScheduleMaintenanceScreenState extends State<ScheduleMaintenanceScreen> {
         _allMachines = append ? [..._allMachines, ...res.data!.items] : res.data!.items;
         _machinesPagination = res.data!.pagination;
         _machinesPage = page;
+        _machinesError = null;
+      } else if (!append) {
+        _machinesError = res.message ?? res.error ?? 'Failed to load machines. Please check your connection and try again.';
       }
       _loadingMachines = false;
       _loadingMoreMachines = false;
@@ -1104,13 +1373,46 @@ class _ScheduleMaintenanceScreenState extends State<ScheduleMaintenanceScreen> {
                 padding: EdgeInsets.symmetric(vertical: 32),
                 child: CircularProgressIndicator(strokeWidth: 2, color: PwtColors.brand),
               ))
+            else if (_allMachines.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 32),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 88,
+                      height: 88,
+                      decoration: BoxDecoration(
+                        color: _machinesError != null ? PwtColors.error.withValues(alpha: 0.1) : PwtColors.brandTint,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: _machinesError != null ? PwtColors.error : PwtColors.brandBorder),
+                      ),
+                      child: Icon(_machinesError != null ? PwtIcons.warn : PwtIcons.drop, size: 36, color: _machinesError != null ? PwtColors.error : PwtColors.brand),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      _machinesError != null ? s['devicesLoadError']! : s['noDevicesYet']!,
+                      style: PwtType.title().copyWith(fontSize: 18),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _machinesError != null ? s['devicesLoadErrorSub']! : s['noDevicesSub']!,
+                      textAlign: TextAlign.center,
+                      style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13),
+                    ),
+                    if (_machinesError != null) ...[
+                      const SizedBox(height: 18),
+                      PwtButton(label: s['retry']!, variant: PwtButtonVariant.soft, onPressed: () => _loadMachines()),
+                    ],
+                  ],
+                ),
+              )
             else
               for (final m in _allMachines)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _deviceCheck(m, _selectedMachine == m, () => setState(() => _selectedMachine = m)),
                 ),
-            if (!_loadingMachines) ...[
+            if (!_loadingMachines && _allMachines.isNotEmpty) ...[
               if (_loadingMoreMachines)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),

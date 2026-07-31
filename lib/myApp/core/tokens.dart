@@ -12,15 +12,15 @@ class PwtColors {
   PwtColors._();
 
   // ── Brand ──
-  static const Color brand = Color(0xFF1D4ED8); // water blue
+  static const Color brand = Color(0xFF1C4BD0); // approved design-system blue, rgb(28,75,208)
   static const Color brandSoft = Color(0xFF3B82F6);
   static const Color brandDeep = Color(0xFF1E40AF);
-  static const Color brandTint = Color(0x141D4ED8); // rgba(29,78,216,0.08)
-  static const Color brandBorder = Color(0x4D1D4ED8); // rgba(29,78,216,0.30)
+  static const Color brandTint = Color(0x141C4BD0); // rgba(28,75,208,0.08)
+  static const Color brandBorder = Color(0x4D1C4BD0); // rgba(28,75,208,0.30)
   static const Color teal = Color(0xFF10B981);
 
   // ── Surfaces ──
-  static const Color bg = Color(0xFFF5F7FB);
+  static const Color bg = Color(0xFFFFFFFF); // approved design system: white background
   static const Color bgElev = Color(0xFFFFFFFF);
   static const Color surface = Color(0xFFFFFFFF);
   static const Color surface2 = Color(0xFFF0F3F9);
@@ -39,11 +39,11 @@ class PwtColors {
   static const Color success = Color(0xFF10B981);
   static const Color warning = Color(0xFFF59E0B);
   static const Color error = Color(0xFFD9534B);
-  static const Color info = Color(0xFF1D4ED8);
+  static const Color info = Color(0xFF1C4BD0);
 
   // Soft status fills/borders used by Banner etc.
-  static const Color infoFill = Color(0x1A1D4ED8);
-  static const Color infoBorder = Color(0x4D1D4ED8);
+  static const Color infoFill = Color(0x1A1C4BD0);
+  static const Color infoBorder = Color(0x4D1C4BD0);
   static const Color successFill = Color(0x1A10B981);
   static const Color successBorder = Color(0x4D10B981);
   static const Color warnFill = Color(0x1FE0962A);

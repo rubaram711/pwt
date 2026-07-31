@@ -67,11 +67,15 @@ class _RootRouter extends StatelessWidget {
           key: const ValueKey('welcome'),
           onContinue: () => app.go(AppRoute.login),
           onSignUp: () => app.go(AppRoute.signup),
+          onGuest: () => app.continueAsGuest(),
         ),
       AppRoute.login => LoginScreen(
           key: const ValueKey('login'),
           onLogin: app.login,
-          onBack: () => app.go(AppRoute.welcome),
+          onBack: () => app.go(app.pendingProduct != null ? AppRoute.individual : AppRoute.welcome),
+          initialEmail: app.prefillEmail,
+          initialPassword: app.prefillPassword,
+          initialMode: app.prefillMode,
         ),
       AppRoute.signup => SignupScreen(
           key: const ValueKey('signup'),

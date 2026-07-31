@@ -66,6 +66,9 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _loading = false;
   String? _error;
 
+  bool get _isEmailTakenError =>
+      _error != null && _error!.toLowerCase().contains('already registered');
+
   @override
   void initState() {
     super.initState();
@@ -247,12 +250,30 @@ class _SignupScreenState extends State<SignupScreen> {
                     ],
                   ),
                 ),
-                Expanded(child: _stepBody(s, prettyPhone)),
+                Expanded(child: _stepBody(s, prettyPhone, app.isArabic)),
                 // error
                 if (_error != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 6),
-                    child: Text(_error!, textAlign: TextAlign.center, style: PwtType.label(color: PwtColors.error).copyWith(fontSize: 13)),
+                    child: Column(
+                      children: [
+                        Text(_error!, textAlign: TextAlign.center, style: PwtType.label(color: PwtColors.error).copyWith(fontSize: 13)),
+                        if (_isEmailTakenError) ...[
+                          const SizedBox(height: 8),
+                          GestureDetector(
+                            onTap: () => context.read<AppState>().goToLoginWithCredentials(
+                                  email: _mode == AccountKind.individual ? _email.text.trim() : _bizEmail.text.trim(),
+                                  password: _mode == AccountKind.individual ? _password.text : _bizPassword.text,
+                                  mode: _mode,
+                                ),
+                            child: Text(
+                              app.isArabic ? 'تسجيل الدخول بدلاً من ذلك' : 'Log in instead',
+                              style: PwtType.label(color: PwtColors.brand, weight: FontWeight.w700).copyWith(fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 // sticky CTA
                 Padding(
@@ -296,7 +317,7 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  Widget _stepBody(Map<String, String> s, String prettyPhone) {
+  Widget _stepBody(Map<String, String> s, String prettyPhone, bool isArabic) {
     switch (_step) {
       case 'phone':
         return ListView(
@@ -351,6 +372,21 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 22),
+            Center(
+              child: GestureDetector(
+                onTap: () => context.read<AppState>().go(AppRoute.login),
+                child: Text.rich(
+                  TextSpan(
+                    style: PwtType.label(color: PwtColors.textSec),
+                    children: [
+                      TextSpan(text: isArabic ? 'لديك حساب بالفعل؟ ' : 'Already have an account? '),
+                      TextSpan(text: isArabic ? 'تسجيل الدخول' : 'Log in', style: const TextStyle(color: PwtColors.brand, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],

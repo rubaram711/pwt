@@ -348,16 +348,24 @@ class _TopProducts extends StatefulWidget {
 class _TopProductsState extends State<_TopProducts> {
   List<ProductModel> _products = [];
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
+    _load();
+  }
+
+  void _load() {
+    setState(() { _loading = true; _error = null; });
     getFilteredProducts(tagLabel: 'best_seller', perPage: 4).then((result) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         if (result.success && result.data != null) {
           _products = result.data!.items;
+        } else {
+          _error = result.message ?? 'Failed to load products.';
         }
       });
     });
@@ -386,6 +394,15 @@ class _TopProductsState extends State<_TopProducts> {
         const SizedBox(height: 22),
         if (_loading)
           const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 40), child: CircularProgressIndicator(strokeWidth: 2)))
+        else if (_error != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32),
+            child: Center(child: Column(children: [
+              Text('Couldn\'t load best sellers right now.', style: AppText.muted.copyWith(color: AppColors.danger)),
+              const SizedBox(height: 10),
+              PwtButton('Retry', variant: PwtBtn.outline, onPressed: _load),
+            ])),
+          )
         else if (_products.isEmpty)
           Padding(padding: const EdgeInsets.symmetric(vertical: 32), child: Center(child: Text('No products found.', style: AppText.muted)))
         else

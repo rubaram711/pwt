@@ -16,21 +16,32 @@ import '../../Backend/Auth/login_api.dart';
 import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.onLogin, required this.onBack});
+  const LoginScreen({super.key, required this.onLogin, required this.onBack, this.initialEmail, this.initialPassword, this.initialMode});
   final ValueChanged<AccountKind> onLogin;
   final VoidCallback onBack;
+  final String? initialEmail;
+  final String? initialPassword;
+  final AccountKind? initialMode;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  AccountKind _mode = AccountKind.individual;
-  final _email = TextEditingController();
-  final _password = TextEditingController();
+  late AccountKind _mode = widget.initialMode ?? AccountKind.individual;
+  late final _email = TextEditingController(text: widget.initialEmail);
+  late final _password = TextEditingController(text: widget.initialPassword);
   bool _showPw = false;
   bool _loading = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialEmail != null || widget.initialPassword != null) {
+      context.read<AppState>().clearLoginPrefill();
+    }
+  }
 
   void _setMode(AccountKind m) => setState(() => _mode = m);
 

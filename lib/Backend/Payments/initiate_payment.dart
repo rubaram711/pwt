@@ -21,6 +21,7 @@ Future<ApiResponse<PaymentModel>> initiatePayment({
       data: {
         'order_id': orderId,
         'payment_method': paymentMethod,
+        'mode':"payment_intent"
       },
       options: idempotencyKey != null
           ? dio.Options(headers: {'Idempotency-Key': idempotencyKey})

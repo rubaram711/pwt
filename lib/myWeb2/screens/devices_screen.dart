@@ -63,7 +63,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
         _page = page;
       });
     } else {
-      setState(() { _loading = false; _error = res.message ?? 'Failed to load devices.'; });
+      setState(() { _loading = false; _error = res.message ?? 'Failed to load machines.'; });
     }
   }
 
@@ -73,9 +73,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
       active: 'devices',
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         DashHeader(
-          title: 'My Devices',
+          title: 'My Machines',
           subtitle: 'Your water systems at a glance.',
-          action: PwtButton('Shop new device', icon: Icons.add, onPressed: () => Navigator.of(context).pushNamed('/shop')),
+          action: PwtButton('Shop new machine', icon: Icons.add, onPressed: () => Navigator.of(context).pushNamed('/shop')),
         ),
         if (_loading)
           const Padding(padding: EdgeInsets.symmetric(vertical: 48), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
@@ -87,11 +87,11 @@ class _DevicesScreenState extends State<DevicesScreen> {
             child: Center(child: Column(children: [
               Container(width: 60, height: 60, decoration: BoxDecoration(color: AppColors.soft, shape: BoxShape.circle), child: const Icon(Icons.water_drop_outlined, size: 28, color: AppColors.ink400)),
               const SizedBox(height: 14),
-              Text('No devices found', style: AppText.h2.copyWith(fontSize: 18)),
+              Text('No machines found', style: AppText.h2.copyWith(fontSize: 18)),
               const SizedBox(height: 6),
               Text('Your installed water systems will appear here.', style: AppText.muted),
               const SizedBox(height: 18),
-              PwtButton('Shop new device', icon: Icons.add, onPressed: () => Navigator.of(context).pushNamed('/shop')),
+              PwtButton('Shop new machine', icon: Icons.add, onPressed: () => Navigator.of(context).pushNamed('/shop')),
             ])),
           ))
         else
@@ -222,7 +222,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       if (id != null) {
         _fetch(id);
       } else {
-        setState(() { _loading = false; _error = 'Device not found.'; });
+        setState(() { _loading = false; _error = 'Machine not found.'; });
       }
     }
   }
@@ -233,7 +233,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     if (res.success && res.data != null) {
       setState(() { _loading = false; _machine = res.data; });
     } else {
-      setState(() { _loading = false; _error = res.message ?? 'Failed to load device.'; });
+      setState(() { _loading = false; _error = res.message ?? 'Failed to load machine.'; });
     }
   }
 
@@ -243,15 +243,15 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final m = _machine;
-    final label = m != null ? m.product.name : 'Device';
+    final label = m != null ? m.product.name : 'Machine';
     return DashboardShell(
       active: 'devices',
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         DashHeader(
           title: label,
           subtitle: m != null ? 'Serial: ${_shortSerial(m.serialNumber)}' : '',
-          crumbs: ['Dashboard', 'Devices', label],
-          action: PwtButton('Back to Devices', variant: PwtBtn.outline, icon: Icons.arrow_back,
+          crumbs: ['Dashboard', 'Machines', label],
+          action: PwtButton('Back to Machines', variant: PwtBtn.outline, icon: Icons.arrow_back,
               onPressed: () => Navigator.of(context).pushReplacementNamed(_backRoute)),
         ),
         if (_loading)
@@ -259,7 +259,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
         else if (_error != null || m == null)
           DashCard(child: Column(children: [
             const SizedBox(height: 10),
-            Text(_error ?? 'Device not found.', style: AppText.muted.copyWith(color: AppColors.danger)),
+            Text(_error ?? 'Machine not found.', style: AppText.muted.copyWith(color: AppColors.danger)),
             const SizedBox(height: 16),
             PwtButton('Back', onPressed: () => Navigator.of(context).pushReplacementNamed(_backRoute)),
             const SizedBox(height: 10),
@@ -287,7 +287,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   }
 
   Widget _mainCard(MachineDetailModel m) => Column(children: [
-    DashCard(title: 'Device Info', action: StatusBadge.forStatus(m.status), child: Column(children: [
+    DashCard(title: 'Machine Info', action: StatusBadge.forStatus(m.status), child: Column(children: [
       _kv('Product', m.product.name),
       if (m.product.shortDescription != null) _kv('Description', m.product.shortDescription!),
       _kv('Serial number', m.serialNumber),

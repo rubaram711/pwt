@@ -8,8 +8,38 @@ import 'dashboard_shell.dart';
 // NOTE: the individual OrdersScreen now lives in individual_orders_screen.dart
 // (faithful list + ongoing/completed order detail on the dash_kit shell).
 
-class MaintenanceScreen extends StatelessWidget {
+class MaintenanceScreen extends StatefulWidget {
   const MaintenanceScreen({super.key});
+
+  @override
+  State<MaintenanceScreen> createState() => _MaintenanceScreenState();
+}
+
+class _MaintenanceScreenState extends State<MaintenanceScreen> {
+  static const _products = ['PW50-R · Hot & Cold', 'PW100-B · 3 Taps', 'PW-RO5 · Reverse Osmosis'];
+  static const _issueTypes = ['Filter replacement', 'Not cooling / heating', 'Leak', 'General service'];
+  static const _times = ['Morning · 8–12', 'Afternoon · 12–4', 'Evening · 4–7'];
+
+  late String _product = _products.first;
+  late String _issueType = _issueTypes.first;
+  late String _preferredTime = _times.first;
+  final _issueController = TextEditingController();
+
+  @override
+  void dispose() {
+    _issueController.dispose();
+    super.dispose();
+  }
+
+  void _submit(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request submitted'), behavior: SnackBarBehavior.floating, backgroundColor: AppColors.ink900));
+    setState(() {
+      _product = _products.first;
+      _issueType = _issueTypes.first;
+      _preferredTime = _times.first;
+      _issueController.clear();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,21 +59,26 @@ class MaintenanceScreen extends StatelessWidget {
               const SizedBox(height: 2),
               Text('PW50-R · scheduled for 14 June 2026. Free under your warranty & rental plans.', style: AppText.body.copyWith(color: AppColors.ink600)),
             ])),
-            const SizedBox(width: 12),
-            PwtButton('Confirm Visit', onPressed: () {}),
+            // Hidden for now.
+            // const SizedBox(width: 12),
+            // PwtButton('Confirm Visit', onPressed: () {}),
           ]),
         ),
         const SizedBox(height: 18),
         Flex(direction: wide ? Axis.horizontal : Axis.vertical, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(flex: wide ? 1 : 0, child: Column(children: [
             DashCard(title: 'Submit a Maintenance Request', child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [Expanded(child: _select('Product', const ['PW50-R · Hot & Cold', 'PW100-B · 3 Taps', 'PW-RO5 · Reverse Osmosis'])), const SizedBox(width: 12), Expanded(child: _select('Issue type', const ['Filter replacement', 'Not cooling / heating', 'Leak', 'General service']))]),
+              Row(children: [
+                Expanded(child: _select('Product', _products, _product, (v) => setState(() => _product = v))),
+                const SizedBox(width: 12),
+                Expanded(child: _select('Issue type', _issueTypes, _issueType, (v) => setState(() => _issueType = v))),
+              ]),
               const SizedBox(height: 12),
-              Row(children: [Expanded(child: _select('Preferred time', const ['Morning · 8–12', 'Afternoon · 12–4', 'Evening · 4–7'])), const SizedBox(width: 12), const Expanded(child: SizedBox())]),
+              Row(children: [Expanded(child: _select('Preferred time', _times, _preferredTime, (v) => setState(() => _preferredTime = v))), const SizedBox(width: 12), const Expanded(child: SizedBox())]),
               const SizedBox(height: 12),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Describe the issue', style: AppText.label), const SizedBox(height: 7), const TextField(maxLines: 3, decoration: InputDecoration(hintText: "Tell us what's happening…"))]),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Describe the issue', style: AppText.label), const SizedBox(height: 7), TextField(controller: _issueController, maxLines: 3, decoration: const InputDecoration(hintText: "Tell us what's happening…"))]),
               const SizedBox(height: 16),
-              PwtButton('Submit Request', icon: Icons.build_outlined, fullWidth: true, onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request submitted'), behavior: SnackBarBehavior.floating, backgroundColor: AppColors.ink900))),
+              PwtButton('Submit Request', icon: Icons.build_outlined, fullWidth: true, onPressed: () => _submit(context)),
             ])),
             const SizedBox(height: 16),
             DashCard(title: 'Service History', child: Column(children: [
@@ -81,10 +116,15 @@ class MaintenanceScreen extends StatelessWidget {
     );
   }
 
-  Widget _select(String label, List<String> opts) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+  Widget _select(String label, List<String> opts, String value, ValueChanged<String> onChanged) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, style: AppText.label),
         const SizedBox(height: 7),
-        DropdownButtonFormField<String>(value: opts.first, isExpanded: true, items: opts.map((o) => DropdownMenuItem(value: o, child: Text(o, style: AppText.body, overflow: TextOverflow.ellipsis))).toList(), onChanged: (_) {}),
+        DropdownButtonFormField<String>(
+          value: value,
+          isExpanded: true,
+          items: opts.map((o) => DropdownMenuItem(value: o, child: Text(o, style: AppText.body, overflow: TextOverflow.ellipsis))).toList(),
+          onChanged: (v) { if (v != null) onChanged(v); },
+        ),
       ]);
 
   Widget _historyRow(String t, String s) => Padding(

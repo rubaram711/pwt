@@ -254,7 +254,13 @@ class _CartScreenState extends State<CartScreen> {
               trailing: PwtIcons.arrow,
               onPressed: isLoggedIn
                   ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => CheckoutScreen(rows: rows, subtotal: subtotal, vat: vat, total: total)))
-                  : () => context.read<AppState>().go(AppRoute.login),
+                  : () {
+                      // CartScreen is pushed on top of the shell, so popping
+                      // back to root is needed for the Login screen (swapped
+                      // in underneath) to actually become visible.
+                      context.read<AppState>().go(AppRoute.login);
+                      Navigator.of(context).popUntil((route) => route.isFirst);
+                    },
             ),
     );
   }

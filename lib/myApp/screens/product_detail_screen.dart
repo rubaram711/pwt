@@ -12,10 +12,12 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../state/cart_state.dart';
 import '../../myWeb2/state/app_state.dart' as web;
+import '../widgets/form_field.dart';
 import '../widgets/layout.dart';
 import '../widgets/primitives.dart';
 import '../widgets/pwt_icons.dart';
 import 'business_screens.dart';
+import 'cart_screen.dart';
 import '../../Backend/Products/show_product.dart';
 import '../../Models/Products/products_model.dart';
 import '../../Models/Products/product_image_model.dart';
@@ -53,8 +55,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool _loading = false;
   int _heroIdx = 0;
   String _tab = 'overview';
-  bool _justAdded = false;
   Plan _plan = Plan.rent;
+  // Guest preview toggle: 0 = Individual (buy/rent), 1 = Company (request quote).
+  // Only shown/used when signed out — a logged-in user's actual role decides this.
+  int _guestView = 0;
 
   @override
   void initState() {
@@ -94,8 +98,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   ProductPriceModel? get _buyPrice =>
       _product.prices.where((p) => p.term == 'buy').firstOrNull;
 
-  bool get _isQuote =>
-      widget.role == AccountKind.business || (_product.isQuoteOnly ?? false);
+  double? get _oldPriceAmt =>
+      _product.originalPrice != null ? double.tryParse(_product.originalPrice!) : null;
+  bool get _isDiscounted =>
+      _oldPriceAmt != null && _buyPrice != null && double.tryParse(_buyPrice!.amount) != null;
+  double? get _discountPct => double.tryParse(_product.discountPercentage ?? '') ??
+      (_product.discount != null ? _product.discount!.toDouble() : null);
+
+  bool get _isGuest => web.AppState.instance.user == null;
+
+  // Effective role/view being previewed — a guest's toggle selection, or a
+  // signed-in user's real account type. Drives which pane is shown (company
+  // users always see the quote panel, matching myWeb2's product page).
+  bool get _isBusinessView {
+    if (_isGuest) return _guestView == 1;
+    return widget.role == AccountKind.business;
+  }
+
+  bool get _isQuote => _isBusinessView || (_product.isQuoteOnly ?? false);
 
   Plan get _currentPlan {
     if (_isQuote) return Plan.quote;
@@ -150,6 +170,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
     return DetailScaffold(
       title: name,
+      floatingActionButton: widget.role == AccountKind.individual
+          ? FloatingCart(onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CartScreen(role: AccountKind.individual))))
+          : null,
       body: ListView(
         padding: const EdgeInsets.only(bottom: 24),
         children: [
@@ -236,45 +259,70 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (catName.isNotEmpty) Eyebrow(catName),
-                const SizedBox(height: 4),
-                Text(name, style: PwtType.headline().copyWith(fontSize: 26)),
-                if (blurb.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Text(blurb, style: PwtType.body(color: PwtColors.textSec).copyWith(height: 1.5)),
+                if (!_isBusinessView) ...[
+                  if (catName.isNotEmpty) Eyebrow(catName),
+                  const SizedBox(height: 4),
+                  Text(name, style: PwtType.headline().copyWith(fontSize: 26)),
+                  if (blurb.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(blurb, style: PwtType.body(color: PwtColors.textSec).copyWith(height: 1.5)),
+                  ],
+                  if ((p.description ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(p.description!, style: PwtType.body(color: PwtColors.textSec).copyWith(height: 1.5)),
+                  ],
+                  const SizedBox(height: 16),
+                  // feature chips
+                  if (features.isNotEmpty)
+                    GridView.builder(
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        mainAxisExtent: 58,
+                      ),
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: features.take(4).length,
+                      itemBuilder: (context, i) {
+                        final f = features[i];
+                        return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: PwtColors.surface,
+                              border: Border.all(color: PwtColors.hairline),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 1),
+                                  child: Icon(PwtIcons.check, size: 15, color: PwtColors.brand),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(child: Text(f, style: PwtType.caption(color: PwtColors.textPri).copyWith(fontSize: 12, fontWeight: FontWeight.w500))),
+                              ],
+                            ),
+                          );
+                      },
+                    ),
+                  const SizedBox(height: 16),
                 ],
-                const SizedBox(height: 16),
-                // feature chips
-                if (features.isNotEmpty)
-                  GridView.count(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 8,
-                    crossAxisSpacing: 8,
-                    childAspectRatio: 4.2,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    children: [
-                      for (final f in features.take(4))
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: PwtColors.surface,
-                            border: Border.all(color: PwtColors.hairline),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(PwtIcons.check, size: 15, color: PwtColors.brand),
-                              const SizedBox(width: 8),
-                              Expanded(child: Text(f, style: PwtType.caption(color: PwtColors.textPri).copyWith(fontSize: 12, fontWeight: FontWeight.w500))),
-                            ],
-                          ),
-                        ),
-                    ],
+                if (_isGuest) ...[
+                  ModeTabs(
+                    mode: _guestView == 0 ? AccountKind.individual : AccountKind.business,
+                    onChanged: (k) => setState(() => _guestView = k == AccountKind.individual ? 0 : 1),
+                    individualLabel: s['individualBuyRent']!,
+                    businessLabel: s['companyRequestQuote']!,
                   ),
-                const SizedBox(height: 16),
-                // price card / quote banner
-                if (!isQuoteOnly && (_rentPrice != null || _buyPrice != null))
+                  const SizedBox(height: 16),
+                ],
+                // price card / quote banner (company view always sees the
+                // quote panel, matching myWeb2's business product page)
+                if (_isBusinessView)
+                  _companyPreview(context, s, ar)
+                else if (!isQuoteOnly && (_rentPrice != null || _buyPrice != null))
                   PwtCard(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -308,16 +356,39 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                     Eyebrow(s['buy']!),
                                     const SizedBox(height: 6),
                                     Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                                      const Dirham(size: 14),
+                                      Dirham(size: 14, color: _isDiscounted ? PwtColors.success : null),
                                       const SizedBox(width: 4),
-                                      Text(_fmtAmt(_buyPrice!.amount), style: PwtType.title().copyWith(fontSize: 22, fontWeight: FontWeight.w700)),
+                                      Text(_fmtAmt(_buyPrice!.amount), style: PwtType.title().copyWith(fontSize: 22, fontWeight: FontWeight.w700, color: _isDiscounted ? PwtColors.success : PwtColors.textPri)),
                                     ]),
+                                    if (_isDiscounted) ...[
+                                      const SizedBox(height: 4),
+                                      Row(children: [
+                                        Text(
+                                          '${_buyPrice!.currency} ${_fmtAmt(_oldPriceAmt!.toStringAsFixed(0))}',
+                                          style: PwtType.caption().copyWith(decoration: TextDecoration.lineThrough),
+                                        ),
+                                        if (_discountPct != null && _discountPct! > 0) ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(color: PwtColors.success.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
+                                            child: Text(
+                                              '${_discountPct! % 1 == 0 ? _discountPct!.toInt() : _discountPct}% OFF',
+                                              style: PwtType.caption().copyWith(color: PwtColors.success, fontWeight: FontWeight.w700, fontSize: 10.5),
+                                            ),
+                                          ),
+                                        ],
+                                      ]),
+                                    ],
                                   ],
                                 ),
                               ),
                           ],
                         ),
-                        if (_rentPrice != null && _buyPrice != null) ...[
+                        if (_isDiscounted) ...[
+                          const SizedBox(height: 10),
+                          Text(ar ? 'عرض لفترة محدودة' : 'Limited-time offer', style: PwtType.caption().copyWith(color: PwtColors.success, fontSize: 11.5)),
+                        ] else if (_rentPrice != null && _buyPrice != null) ...[
                           const SizedBox(height: 10),
                           Text(s['youSaveLine']!, style: PwtType.caption().copyWith(fontSize: 11.5)),
                         ],
@@ -348,17 +419,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ),
                   ),
                 ],
-                const SizedBox(height: 16),
-                // assurances
-                Row(
-                  children: [
-                    _assurance(PwtIcons.truck, s['freeDelivery']!, s['freeDeliverySub']!),
-                    const SizedBox(width: 8),
-                    _assurance(PwtIcons.wrench, s['freeInstall']!, s['freeInstallSub']!),
-                    const SizedBox(width: 8),
-                    _assurance(PwtIcons.shield, s['warrantyTitle']!, s['warrantySub']!),
-                  ],
-                ),
+                if (!_isBusinessView) ...[
+                  const SizedBox(height: 16),
+                  // assurances
+                  Row(
+                    children: [
+                      _assurance(PwtIcons.truck, s['freeDelivery']!, s['freeDeliverySub']!),
+                      const SizedBox(width: 8),
+                      _assurance(PwtIcons.wrench, s['freeInstall']!, s['freeInstallSub']!),
+                      const SizedBox(width: 8),
+                      _assurance(PwtIcons.shield, s['warrantyTitle']!, s['warrantySub']!),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -395,6 +468,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   void _addAndGo(BuildContext context, Plan plan) {
+    // Requesting a quotation never requires an account first — matches
+    // myWeb2's company pane, which pushes /rfq directly with no login gate.
     if (_isQuote) {
       Navigator.push(
         context,
@@ -402,27 +477,93 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       );
       return;
     }
-    if (web.AppState.instance.user == null) {
-      context.read<AppState>().go(AppRoute.login);
+    if (_isGuest) {
+      // This screen is pushed on top of the shell, so the app-level route
+      // switch to Login happens *underneath* it — pop back to the root
+      // route first, otherwise Login is invisible behind this pushed page.
+      context.read<AppState>().goToLoginForProduct(_product);
+      Navigator.of(context).popUntil((route) => route.isFirst);
       return;
     }
     final pid = _product.id?.toString() ?? _product.uuid ?? '';
     context.read<CartState>().addItem(pid, plan: plan);
-    setState(() => _justAdded = true);
-    Future.delayed(const Duration(milliseconds: 1200), () {
-      if (!mounted) return;
-      setState(() => _justAdded = false);
-    });
   }
 
   Widget _buildBottomBar(Map<String, String> s) {
-    return Builder(builder: (ctx) => PwtButton(
-      label: _justAdded ? s['addedToCart']! : (_isQuote ? s['requestQuote']! : s['addToCart']!),
-      variant: _justAdded ? PwtButtonVariant.soft : PwtButtonVariant.primary,
-      full: true,
-      icon: _justAdded ? PwtIcons.check : PwtIcons.cart,
-      onPressed: () => _addAndGo(ctx, _currentPlan),
-    ));
+    if (_isQuote) {
+      return Builder(builder: (ctx) => PwtButton(
+        label: s['requestQuote']!,
+        full: true,
+        icon: PwtIcons.cart,
+        onPressed: () => _addAndGo(ctx, _currentPlan),
+      ));
+    }
+    final pid = _product.id?.toString() ?? _product.uuid ?? '';
+    final plan = _currentPlan;
+    return Consumer<CartState>(
+      builder: (context, cart, _) {
+        final item = cart.items.where((i) => i.productId == pid && i.plan == plan).firstOrNull;
+        if (item == null) {
+          return PwtButton(
+            label: s['addToCart']!,
+            full: true,
+            icon: PwtIcons.cart,
+            onPressed: () => _addAndGo(context, plan),
+          );
+        }
+        return Row(
+          children: [
+            Expanded(
+              child: Container(
+                height: 52,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: PwtColors.brandTint,
+                  borderRadius: BorderRadius.circular(PwtRadius.button),
+                  border: Border.all(color: PwtColors.brandBorder),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _qtyButton(PwtIcons.minus, () => cart.setQty(pid, plan, item.qty - 1)),
+                    Text('${item.qty}', style: PwtType.title().copyWith(fontSize: 17, fontWeight: FontWeight.w700)),
+                    _qtyButton(PwtIcons.plus, () => cart.setQty(pid, plan, item.qty + 1)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            GestureDetector(
+              onTap: () => cart.removeItem(pid, plan),
+              child: Container(
+                width: 52,
+                height: 52,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: PwtColors.surface,
+                  borderRadius: BorderRadius.circular(PwtRadius.button),
+                  border: Border.all(color: PwtColors.error),
+                ),
+                child: const Icon(PwtIcons.trash, color: PwtColors.error, size: 20),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _qtyButton(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+        child: Icon(icon, size: 16, color: PwtColors.brand),
+      ),
+    );
   }
 
   Widget _tabContent(List<String> features, Map<String, String> s, bool ar) {
@@ -460,18 +601,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if ((_product.description ?? '').isNotEmpty) ...[
-              Text(_product.description!, style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13.5, height: 1.6)),
-              const SizedBox(height: 12),
-            ] else ...[
-              Text(ar ? 'ترطيب مميّز كل يوم.' : 'Premium hydration, every day.', style: PwtType.subtitle().copyWith(fontSize: 16, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              Text(
-                ar ? 'تصميم أنيق وأداء متقدم وتقنية موفّرة للطاقة — إضافة مثالية لأي مساحة.' : 'A sleek design, advanced filtration and energy-saving technology make this the perfect addition to any home or office.',
-                style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13.5, height: 1.6),
-              ),
-              const SizedBox(height: 12),
-            ],
             for (final f in features)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -486,6 +615,62 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ],
         );
     }
+  }
+
+  Widget _companyPreview(BuildContext context, Map<String, String> s, bool ar) {
+    final points = ar
+        ? const ['تسعير مخصص', 'خصومات على الطلبات بالجملة', 'مدير حساب مخصص', 'دعم ما بعد البيع']
+        : const ['Personalised pricing', 'Bulk order discounts', 'Dedicated account manager', 'Dedicated after-sales support'];
+    return PwtCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            ar ? 'مهتم بهذا المنتج لعملك؟' : 'Interested in this product for your business?',
+            style: PwtType.title().copyWith(fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            ar ? 'احصل على عرض سعر مخصص يناسب احتياجاتك.' : 'Get a customized quotation tailored to your needs.',
+            style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13.5),
+          ),
+          const SizedBox(height: 14),
+          for (final p in points)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(PwtIcons.check, size: 16, color: PwtColors.brand),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(p, style: PwtType.body().copyWith(fontSize: 13))),
+                ],
+              ),
+            ),
+          // const SizedBox(height: 4),
+          // PwtButton(
+          //   label: s['requestQuotation']!,
+          //   full: true,
+          //   icon: PwtIcons.message,
+          //   onPressed: () => _addAndGo(context, Plan.quote),
+          // ),
+          // const SizedBox(height: 10),
+          // Row(
+          //   children: [
+          //     const Icon(PwtIcons.info, size: 14, color: PwtColors.textTer),
+          //     const SizedBox(width: 8),
+          //     Expanded(
+          //       child: Text(
+          //         ar ? 'سيتواصل معك فريقنا خلال 24 ساعة.' : 'Our team will get back to you within 24 hours.',
+          //         style: PwtType.caption(color: PwtColors.textSec),
+          //       ),
+          //     ),
+          //   ],
+          // ),
+        ],
+      ),
+    );
   }
 
   Widget _planTab(String label, String sub, bool on, VoidCallback onTap) {

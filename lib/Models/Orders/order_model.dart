@@ -34,6 +34,7 @@ class OrderModel {
   final String? cancelledAt;
   final String? cancellationReason;
   final int trackingProgress;
+  final String? paymentStatus;
   final bool isCancellable;
 
   OrderModel({
@@ -72,6 +73,7 @@ class OrderModel {
     this.cancelledAt,
     this.cancellationReason,
     this.trackingProgress = 0,
+    this.paymentStatus,
     this.isCancellable = false,
   });
 
@@ -118,6 +120,7 @@ class OrderModel {
       cancelledAt: json['cancelled_at'],
       cancellationReason: json['cancellation_reason'],
       trackingProgress: json['tracking_progress'] ?? 0,
+      paymentStatus: json['payment_status'],
       isCancellable: json['is_cancellable'] ?? false,
     );
   }
@@ -199,6 +202,8 @@ class OrderDetailModel {
 
   final int? itemsCount;
   final List<OrderItemModel> items;
+  final String? firstProductName;
+  final int remainingItemsCount;
 
   final String? customerName;
   final String? customerEmail;
@@ -225,6 +230,7 @@ class OrderDetailModel {
   final String? cancellationReason;
 
   final int? trackingProgress;
+  final String? paymentStatus;
   final bool? isCancellable;
 
   final List<dynamic>? statusHistory;
@@ -245,6 +251,8 @@ class OrderDetailModel {
     required this.totalAmount,
     this.itemsCount,
     this.items = const [],
+    this.firstProductName,
+    this.remainingItemsCount = 0,
     this.customerName,
     this.customerEmail,
     this.customerPhone,
@@ -266,6 +274,7 @@ class OrderDetailModel {
     this.cancelledAt,
     this.cancellationReason,
     this.trackingProgress,
+    this.paymentStatus,
     this.isCancellable,
     this.statusHistory,
   });
@@ -291,6 +300,8 @@ class OrderDetailModel {
       items: json['items'] != null
           ? (json['items'] as List).map((e) => OrderItemModel.fromJson(e)).toList()
           : [],
+      firstProductName: json['first_product_name'],
+      remainingItemsCount: json['remaining_items_count'] ?? 0,
 
       customerName: json['customer_name'],
       customerEmail: json['customer_email'],
@@ -323,6 +334,7 @@ class OrderDetailModel {
       cancellationReason: json['cancellation_reason'],
 
       trackingProgress: json['tracking_progress'],
+      paymentStatus: json['payment_status'],
       isCancellable: json['is_cancellable'],
 
       statusHistory: json['status_history'],

@@ -18,6 +18,7 @@ class PaymentModel {
   final String? sessionId;
   final String? paymentReference;
   final String? paymentToken;
+  final String? clientSecret;
 
   PaymentModel({
     required this.paymentId,
@@ -38,6 +39,7 @@ class PaymentModel {
     this.sessionId,
     this.paymentReference,
     this.paymentToken,
+    this.clientSecret,
   });
 
   factory PaymentModel.fromJson(Map<String, dynamic> json) => PaymentModel(
@@ -59,6 +61,7 @@ class PaymentModel {
         sessionId: json['session_id'],
         paymentReference: json['payment_reference'],
         paymentToken: json['payment_token'],
+        clientSecret: json['client_secret'],
       );
 }
 

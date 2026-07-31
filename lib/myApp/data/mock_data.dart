@@ -121,8 +121,8 @@ class MockData {
   ];
 
   static const List<Invoice> businessInvoices = [
-    Invoice(id: 'INV-B-5521', date: '01 May 2026', desc: 'Fleet rental · 4 devices', amount: 1333.50, status: 'paid'),
-    Invoice(id: 'INV-B-5402', date: '01 Apr 2026', desc: 'Fleet rental · 4 devices', amount: 1333.50, status: 'due'),
+    Invoice(id: 'INV-B-5521', date: '01 May 2026', desc: 'Fleet rental · 4 machines', amount: 1333.50, status: 'paid'),
+    Invoice(id: 'INV-B-5402', date: '01 Apr 2026', desc: 'Fleet rental · 4 machines', amount: 1333.50, status: 'due'),
     Invoice(id: 'INV-B-5288', date: '08 May 2026', desc: 'Maintenance · deep clean', amount: 210.00, status: 'paid'),
     Invoice(id: 'INV-B-5104', date: '04 Nov 2025', desc: 'S4 Sparkling · Purchase', amount: 2730.00, status: 'paid'),
   ];

@@ -1491,6 +1491,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   String? _statusFilter;
   int _page = 1;
   PaginationModel? _pagination;
+  String? _errorMsg;
 
   static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   static const _statusFilters = <String?>[null, 'pending', 'completed', 'cancelled'];
@@ -1506,7 +1507,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
     if (append) {
       setState(() => _loadingMore = true);
     } else {
-      setState(() { _loading = true; _orders = []; });
+      setState(() { _loading = true; _orders = []; _errorMsg = null; });
     }
     final res = await getOrders(page: page, status: _statusFilter);
     if (!mounted) return;
@@ -1515,6 +1516,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
         _orders = append ? [..._orders, ...res.data!.items] : res.data!.items;
         _pagination = res.data!.pagination;
         _page = page;
+        _errorMsg = null;
+      } else if (!append) {
+        _errorMsg = res.message ?? res.error ?? 'Failed to load orders. Please check your connection and try again.';
       }
       _loading = false;
       _loadingMore = false;
@@ -1587,6 +1591,39 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
+                if (_orders.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 40, 10, 0),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 96,
+                          height: 96,
+                          decoration: BoxDecoration(
+                            color: _errorMsg != null ? PwtColors.error.withValues(alpha: 0.1) : PwtColors.brandTint,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: _errorMsg != null ? PwtColors.error : PwtColors.brandBorder),
+                          ),
+                          child: Icon(_errorMsg != null ? PwtIcons.warn : PwtIcons.orders, size: 40, color: _errorMsg != null ? PwtColors.error : PwtColors.brand),
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          _errorMsg != null ? s['ordersLoadError']! : (_statusFilter == null ? s['noOrdersYet']! : s['noOrdersFiltered']!),
+                          style: PwtType.title().copyWith(fontSize: 20),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _errorMsg != null ? s['ordersLoadErrorSub']! : (_statusFilter == null ? s['noOrdersSub']! : s['noOrdersFilteredSub']!),
+                          textAlign: TextAlign.center,
+                          style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13.5),
+                        ),
+                        if (_errorMsg != null) ...[
+                          const SizedBox(height: 20),
+                          PwtButton(label: s['retry']!, variant: PwtButtonVariant.soft, onPressed: () => _load()),
+                        ],
+                      ],
+                    ),
+                  ),
                 for (final o in _orders)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),

@@ -100,7 +100,7 @@ class _CompanyMaintenanceScreenState extends State<CompanyMaintenanceScreen> {
               const SizedBox(height: 6),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),
-                child: Text("Keep your fleet running smoothly. Book a service visit for one or more of your devices and we'll handle the rest.", style: AppText.body.copyWith(color: AppColors.ink500), textAlign: TextAlign.center),
+                child: Text("Keep your fleet running smoothly. Book a service visit for one or more of your machines and we'll handle the rest.", style: AppText.body.copyWith(color: AppColors.ink500), textAlign: TextAlign.center),
               ),
               const SizedBox(height: 18),
               PwtButton('Schedule Maintenance', icon: Icons.add, onPressed: () => Navigator.of(context).pushNamed('/scheduleMaintenance')),
@@ -138,7 +138,7 @@ class _CompanyMaintenanceScreenState extends State<CompanyMaintenanceScreen> {
             Container(width: 44, height: 44, decoration: BoxDecoration(color: AppColors.blue50, borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.build_outlined, color: AppColors.blue700)),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Service visit — 1 device', style: AppText.h3.copyWith(fontSize: 15)),
+              Text('Service visit — 1 machine', style: AppText.h3.copyWith(fontSize: 15)),
               const SizedBox(height: 2),
               Text(r.preferredTime != null ? '${_fmtDate(r.preferredDate)} · ${_slotLabels[r.preferredTime] ?? r.preferredTime}' : _fmtDate(r.preferredDate), style: AppText.muted),
             ])),
@@ -226,7 +226,7 @@ class _ScheduleMaintenanceScreenState extends State<ScheduleMaintenanceScreen> {
     if (res.success && res.data != null) {
       setState(() { _loading = false; _machines = res.data!.items; });
     } else {
-      setState(() { _loading = false; _error = res.message ?? 'Failed to load devices.'; });
+      setState(() { _loading = false; _error = res.message ?? 'Failed to load machines.'; });
     }
   }
 
@@ -269,7 +269,7 @@ class _ScheduleMaintenanceScreenState extends State<ScheduleMaintenanceScreen> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(color: AppColors.soft, borderRadius: BorderRadius.circular(AppRadius.sm)),
-          child: Text(_selectedMachine == null ? 'No device selected' : (_selectedMachine!.displayName ?? _selectedMachine!.product.name), style: AppText.label),
+          child: Text(_selectedMachine == null ? 'No machine selected' : (_selectedMachine!.displayName ?? _selectedMachine!.product.name), style: AppText.label),
         ),
         const SizedBox(height: 14),
       ],
@@ -328,7 +328,7 @@ class _ScheduleMaintenanceScreenState extends State<ScheduleMaintenanceScreen> {
         onPressed: _selectedMachine == null || _date == null || _submitting ? null : _schedule,
       ),
       if (_selectedMachine == null)
-        Padding(padding: const EdgeInsets.only(top: 10), child: Text('Select a device to continue.', style: AppText.muted)),
+        Padding(padding: const EdgeInsets.only(top: 10), child: Text('Select a machine to continue.', style: AppText.muted)),
       if (_selectedMachine != null && _date == null)
         Padding(padding: const EdgeInsets.only(top: 10), child: Text('Please select a preferred date.', style: AppText.muted)),
     ]);
@@ -360,7 +360,7 @@ class _ScheduleMaintenanceScreenState extends State<ScheduleMaintenanceScreen> {
             const SizedBox(height: 30),
             Wrap(spacing: 12, runSpacing: 12, alignment: WrapAlignment.center, children: [
               // PwtButton('View My Requests', onPressed: () => Navigator.of(context).pushReplacementNamed('/maintenance')),
-              PwtButton('Back to Devices', variant: PwtBtn.outline, onPressed: () => Navigator.of(context).pushReplacementNamed(isCompany ? '/companyDashboard' : '/dashboard')),
+              PwtButton('Back to Machines', variant: PwtBtn.outline, onPressed: () => Navigator.of(context).pushReplacementNamed(isCompany ? '/companyDashboard' : '/dashboard')),
             ]),
           ]),
         )),
@@ -380,7 +380,7 @@ class _ScheduleMaintenanceScreenState extends State<ScheduleMaintenanceScreen> {
           title: 'Schedule Maintenance',
           subtitle: _preselected
               ? (machine != null ? (machine.displayName ?? machine.product.name) : 'Service visit')
-              : 'Select the devices that need a service visit',
+              : 'Select the machines that need a service visit',
           crumbs: const ['Maintenance', 'Schedule'],
           action: PwtButton('Back', variant: PwtBtn.outline, icon: Icons.arrow_back, onPressed: () => Navigator.of(context).pushReplacementNamed(isCompany ? '/companyMaintenance' : '/maintenance')),
         ),
@@ -412,7 +412,7 @@ class _ScheduleMaintenanceScreenState extends State<ScheduleMaintenanceScreen> {
             Expanded(flex: wide ? 3 : 0, child: DashCard(child: Column(children: [
               Row(children: [
                 Expanded(child: TextField(
-                  decoration: const InputDecoration(hintText: 'Search devices by name', prefixIcon: Icon(Icons.search, size: 18)),
+                  decoration: const InputDecoration(hintText: 'Search machines by name', prefixIcon: Icon(Icons.search, size: 18)),
                   onChanged: _onSearchChanged,
                 )),
                 const SizedBox(width: 12),
@@ -474,7 +474,7 @@ class _ScheduleMaintenanceScreenState extends State<ScheduleMaintenanceScreen> {
                 );
               }),
               if (!_loading && _machines.isEmpty && _error == null)
-                Padding(padding: const EdgeInsets.all(12), child: Text('No devices match your search.', style: AppText.muted)),
+                Padding(padding: const EdgeInsets.all(12), child: Text('No machines match your search.', style: AppText.muted)),
             ]))),
             SizedBox(width: wide ? 18 : 0, height: wide ? 0 : 16),
             Expanded(flex: wide ? 2 : 0, child: DashCard(title: 'Service details', child: _serviceForm())),
@@ -614,11 +614,11 @@ class _MaintenanceDetailsScreenState extends State<MaintenanceDetailsScreen> {
       _detail('Priority', r.priority),
       _detail('Preferred date', _fmtDate(r.preferredDate, weekday: true)),
       if (r.preferredTime != null) _detail('Preferred time', _slotLabels[r.preferredTime] ?? r.preferredTime!),
-      _detail('Device', r.machine.displayName ?? r.machine.serialNumber),
+      _detail('Machine', r.machine.displayName ?? r.machine.serialNumber),
       if (r.description.isNotEmpty) _detail('Notes', r.description),
     ])),
     const SizedBox(height: 16),
-    DashCard(title: 'Devices on this visit', child: Padding(
+    DashCard(title: 'Machines on this visit', child: Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(children: [
         Container(width: 38, height: 38, decoration: BoxDecoration(color: AppColors.blue50, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.build_outlined, size: 18, color: AppColors.blue700)),

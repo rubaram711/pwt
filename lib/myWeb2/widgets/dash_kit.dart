@@ -10,16 +10,19 @@ class DashNavEntry {
 }
 
 const _companyNav = [
-  DashNavEntry('devices', 'Devices', '/companyDashboard', Icons.grid_view_rounded),
+  DashNavEntry('devices', 'Machines', '/companyDashboard', Icons.grid_view_rounded),
   DashNavEntry('orders', 'Orders', '/companyOrders', Icons.inventory_2_outlined),
   DashNavEntry('maintenance', 'Maintenance', '/companyMaintenance', Icons.build_outlined),
-  DashNavEntry('invoices', 'Invoices History', '/invoices', Icons.description_outlined),
+  // Hidden for now — keep the route/screen intact, just not linked from the nav.
+  // DashNavEntry('invoices', 'Invoices History', '/invoices', Icons.description_outlined),
   DashNavEntry('settings', 'Settings', '/settings', Icons.settings_outlined),
   DashNavEntry('profile', 'Profile', '/profile', Icons.person_outline),
 ];
 const _individualNav = [
-  DashNavEntry('devices', 'Devices', '/dashboard', Icons.grid_view_rounded),
-  DashNavEntry('invoices', 'Invoices History', '/invoices', Icons.description_outlined),
+  DashNavEntry('devices', 'Machines', '/dashboard', Icons.grid_view_rounded),
+  DashNavEntry('orders', 'Orders', '/orders', Icons.inventory_2_outlined),
+  // Hidden for now — keep the route/screen intact, just not linked from the nav.
+  // DashNavEntry('invoices', 'Invoices History', '/invoices', Icons.description_outlined),
   DashNavEntry('settings', 'Settings', '/settings', Icons.settings_outlined),
   DashNavEntry('profile', 'Profile', '/profile', Icons.person_outline),
 ];

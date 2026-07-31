@@ -96,9 +96,24 @@ class _ShopScreenState extends State<ShopScreen> {
               : _error != null
                   ? Padding(
                       padding: const EdgeInsets.symmetric(vertical: 40),
-                      child: Center(child: Text(_error!, style: AppText.muted)),
+                      child: Center(child: Column(children: [
+                        Text(_error!, style: AppText.muted.copyWith(color: AppColors.danger)),
+                        const SizedBox(height: 14),
+                        PwtButton('Retry', variant: PwtBtn.outline, onPressed: _loadProducts),
+                      ])),
                     )
-                  : LayoutBuilder(builder: (context, c) {
+                  : _products.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 40),
+                          child: Center(child: Column(children: [
+                            Container(width: 60, height: 60, decoration: BoxDecoration(color: AppColors.soft, shape: BoxShape.circle), child: const Icon(Icons.search_off, size: 28, color: AppColors.ink400)),
+                            const SizedBox(height: 14),
+                            Text('No products found', style: AppText.h2.copyWith(fontSize: 18)),
+                            const SizedBox(height: 6),
+                            Text('No products are available right now.', style: AppText.muted),
+                          ])),
+                        )
+                      : LayoutBuilder(builder: (context, c) {
                       final cols = c.maxWidth > 1000 ? 4 : c.maxWidth > 680 ? 3 : 2;
                       return GridView.builder(
                         shrinkWrap: true,

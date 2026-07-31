@@ -56,6 +56,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // Payment cards
   List<PaymentCard> _cards = [];
   bool _loadingCards = false;
+  String? _cardsLoadError;
   int? _selectedCardId;
   bool _enterNewCard = false;
   final _cardNumber = TextEditingController();
@@ -187,17 +188,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _loadCards() async {
-    setState(() => _loadingCards = true);
+    setState(() { _loadingCards = true; _cardsLoadError = null; });
     final res = await getPaymentCards();
     if (!mounted) return;
     setState(() {
       _loadingCards = false;
       if (res.success && res.data != null) {
         _cards = res.data!;
+        _cardsLoadError = null;
         if (_cards.isNotEmpty && _selectedCardId == null) {
           final def = _cards.where((c) => c.isDefault).firstOrNull;
           _selectedCardId = def?.id ?? _cards.first.id;
         }
+      } else {
+        _cardsLoadError = res.message ?? 'Failed to load saved cards.';
       }
     });
   }
@@ -696,57 +700,70 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Widget _cardPaymentSection() {
+    final showNewCardForm = _cardsLoadError != null || _cards.isEmpty || _enterNewCard;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // Saved cards
         if (_loadingCards)
           const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
-        else if (_cards.isNotEmpty && !_enterNewCard) ...[
-          Text('Saved Cards', style: AppText.label),
-          const SizedBox(height: 10),
-          ..._cards.map((c) => _cardTile(c)),
-          const SizedBox(height: 4),
-          GestureDetector(
-            onTap: () => setState(() { _enterNewCard = true; _selectedCardId = null; }),
-            child: Row(children: [
-              const Icon(Icons.add, size: 16, color: AppColors.blue700),
-              const SizedBox(width: 6),
-              Text('Use a different card', style: AppText.label.copyWith(color: AppColors.blue700)),
-            ]),
-          ),
-          const SizedBox(height: 10),
-        ] else ...[
-          // New card form
-          if (_cards.isNotEmpty)
+        else ...[
+          if (_cardsLoadError != null) ...[
             Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: GestureDetector(
-                onTap: () => setState(() { _enterNewCard = false; _selectedCardId = _cards.firstWhere((c) => c.isDefault, orElse: () => _cards.first).id; }),
-                child: Row(children: [
-                  const Icon(Icons.arrow_back, size: 14, color: AppColors.blue700),
-                  const SizedBox(width: 6),
-                  Text('Use a saved card', style: AppText.label.copyWith(color: AppColors.blue700)),
-                ]),
-              ),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text('Couldn\'t load your saved cards. Enter a new card below, or retry.', style: AppText.muted.copyWith(color: AppColors.danger)),
             ),
-          Text('Card Number', style: AppText.label),
-          const SizedBox(height: 7),
-          TextField(
-            controller: _cardNumber,
-            keyboardType: TextInputType.number,
-            inputFormatters: [CardNumberFormatter()],
-            decoration: InputDecoration(hintText: '1234 1234 1234 1234', errorText: _errors['cardNumber']),
-            onChanged: (_) => setState(() => _errors.remove('cardNumber')),
-          ),
-          const SizedBox(height: 10),
-          Row(children: [
-            Expanded(child: _cardSubField('Month', _cardMonth, 'MM', 'cardMonth', maxLen: 2)),
-            const SizedBox(width: 10),
-            Expanded(child: _cardSubField('Year', _cardYear, 'YY', 'cardYear', maxLen: 2)),
-            const SizedBox(width: 10),
-            Expanded(child: _cardSubField('CVC', _cardCvc, '123', 'cardCvc', maxLen: 4)),
-          ]),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: PwtButton('Retry loading saved cards', variant: PwtBtn.outline, onPressed: _loadCards),
+            ),
+          ],
+          if (!showNewCardForm) ...[
+            Text('Saved Cards', style: AppText.label),
+            const SizedBox(height: 10),
+            ..._cards.map((c) => _cardTile(c)),
+            const SizedBox(height: 4),
+            GestureDetector(
+              onTap: () => setState(() { _enterNewCard = true; _selectedCardId = null; }),
+              child: Row(children: [
+                const Icon(Icons.add, size: 16, color: AppColors.blue700),
+                const SizedBox(width: 6),
+                Text('Use a different card', style: AppText.label.copyWith(color: AppColors.blue700)),
+              ]),
+            ),
+            const SizedBox(height: 10),
+          ] else ...[
+            // New card form
+            if (_cards.isNotEmpty && _cardsLoadError == null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: GestureDetector(
+                  onTap: () => setState(() { _enterNewCard = false; _selectedCardId = _cards.firstWhere((c) => c.isDefault, orElse: () => _cards.first).id; }),
+                  child: Row(children: [
+                    const Icon(Icons.arrow_back, size: 14, color: AppColors.blue700),
+                    const SizedBox(width: 6),
+                    Text('Use a saved card', style: AppText.label.copyWith(color: AppColors.blue700)),
+                  ]),
+                ),
+              ),
+            Text('Card Number', style: AppText.label),
+            const SizedBox(height: 7),
+            TextField(
+              controller: _cardNumber,
+              keyboardType: TextInputType.number,
+              inputFormatters: [CardNumberFormatter()],
+              decoration: InputDecoration(hintText: '1234 1234 1234 1234', errorText: _errors['cardNumber']),
+              onChanged: (_) => setState(() => _errors.remove('cardNumber')),
+            ),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: _cardSubField('Month', _cardMonth, 'MM', 'cardMonth', maxLen: 2)),
+              const SizedBox(width: 10),
+              Expanded(child: _cardSubField('Year', _cardYear, 'YY', 'cardYear', maxLen: 2)),
+              const SizedBox(width: 10),
+              Expanded(child: _cardSubField('CVC', _cardCvc, '123', 'cardCvc', maxLen: 4)),
+            ]),
+          ],
         ],
       ]),
     );

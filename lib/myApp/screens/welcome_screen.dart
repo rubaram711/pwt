@@ -15,9 +15,10 @@ import '../widgets/primitives.dart';
 import '../widgets/pwt_icons.dart';
 
 class WelcomeScreen extends StatefulWidget {
-  const WelcomeScreen({super.key, required this.onContinue, required this.onSignUp});
+  const WelcomeScreen({super.key, required this.onContinue, required this.onSignUp, required this.onGuest});
   final VoidCallback onContinue;
   final VoidCallback onSignUp;
+  final VoidCallback onGuest;
 
   @override
   State<WelcomeScreen> createState() => _WelcomeScreenState();
@@ -160,6 +161,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   PwtButton(label: s['getStarted']!, full: true, trailing: PwtIcons.arrow, onPressed: widget.onContinue),
                   const SizedBox(height: 10),
                   PwtButton(label: s['createAccount']!, variant: PwtButtonVariant.ghost, full: true, onPressed: widget.onSignUp),
+                  const SizedBox(height: 10),
+                  PwtButton(label: s['continueAsGuest']!, variant: PwtButtonVariant.ghost, full: true, onPressed: widget.onGuest),
                 ],
               ),
             ),

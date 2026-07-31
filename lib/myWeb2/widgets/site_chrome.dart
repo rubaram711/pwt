@@ -184,7 +184,7 @@ class LangSwitcher extends StatelessWidget {
 }
 
 /// Right-side account control: a solid "Login" button when logged out, or a
-/// profile dropdown (avatar · name ▾ → Devices / Orders / Invoices / Settings /
+/// profile dropdown (avatar · name ▾ → Machines / Orders / Invoices / Settings /
 /// Profile / Log out) when logged in. Mirrors site-nav.js buildRight().
 class AccountAction extends StatelessWidget {
   /// When set (on dashboard headers), a signed-out visitor still sees the
@@ -247,9 +247,10 @@ class AccountAction extends StatelessWidget {
               ]),
             ),
             const PopupMenuDivider(),
-            _menuItem(isCo ? '/companyDashboard' : '/dashboard', Icons.grid_view_rounded, 'Devices'),
-            if (isCo) _menuItem('/companyOrders', Icons.inventory_2_outlined, 'Orders'),
-            _menuItem('/invoices', Icons.description_outlined, 'Invoices History'),
+            _menuItem(isCo ? '/companyDashboard' : '/dashboard', Icons.grid_view_rounded, 'Machines'),
+            _menuItem(isCo ? '/companyOrders' : '/orders', Icons.inventory_2_outlined, 'Orders'),
+            // Hidden for now — keep the route/screen intact, just not linked from the menu.
+            // _menuItem('/invoices', Icons.description_outlined, 'Invoices History'),
             _menuItem('/settings', Icons.settings_outlined, 'Settings'),
             _menuItem('/profile', Icons.person_outline, 'Profile'),
             _menuItem('logout', Icons.logout, 'Log out', danger: true),

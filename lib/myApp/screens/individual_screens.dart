@@ -17,6 +17,7 @@ import '../widgets/chrome.dart';
 import '../widgets/primitives.dart';
 import '../widgets/pwt_icons.dart';
 import 'account_screens.dart';
+import 'business_screens.dart' show RequestRfqScreen;
 import 'cart_screen.dart';
 import 'overlays.dart';
 import 'product_detail_screen.dart';
@@ -25,9 +26,11 @@ import '../../Backend/Machines/get_machines.dart';
 import '../../Backend/Maintenance/get_maintenance_requests.dart';
 import '../../Backend/Categories/get_categories.dart';
 import '../../Backend/Products/get_products.dart';
+import '../../Backend/Orders/get_orders.dart';
 import '../../Models/category_model.dart';
 import '../../Models/Machines/machines_model.dart';
 import '../../Models/Maintenance/maintenance_request_model.dart';
+import '../../Models/Orders/order_model.dart';
 import '../../Models/Pagination/pagination_model.dart';
 import '../../Models/Products/products_model.dart';
 
@@ -52,24 +55,46 @@ class IndividualShell extends StatefulWidget {
 
 class _IndividualShellState extends State<IndividualShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  String _tab = 'devices';
+  final _productsKey = GlobalKey<ProductsScreenState>();
+  final _ordersKey = GlobalKey<_IndividualOrdersScreenState>();
+  String _tab = 'home';
   List<MachineModel> _machines = [];
   bool _loadingMachines = true;
   bool _loadingMoreMachines = false;
   int _machinesPage = 1;
   PaginationModel? _machinesPagination;
+  String? _machinesError;
+
+  bool get _isGuest => web.AppState.instance.user == null;
 
   @override
   void initState() {
     super.initState();
-    _loadMachines();
+    if (!_isGuest) _loadMachines();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final appState = context.read<AppState>();
+      final pending = appState.pendingProduct;
+      if (pending != null) {
+        appState.clearPendingProduct();
+        _push(ProductDetailScreen(product: pending, role: AccountKind.individual));
+      }
+    });
+  }
+
+  void _onProfileTap() {
+    if (_isGuest) {
+      context.read<AppState>().go(AppRoute.login);
+    } else {
+      _scaffoldKey.currentState?.openEndDrawer();
+    }
   }
 
   Future<void> _loadMachines({int page = 1, bool append = false}) async {
     if (append) {
       setState(() => _loadingMoreMachines = true);
     } else {
-      setState(() => _loadingMachines = true);
+      setState(() { _loadingMachines = true; _machinesError = null; });
     }
     final res = await getMachines(page: page);
     if (!mounted) return;
@@ -78,6 +103,9 @@ class _IndividualShellState extends State<IndividualShell> {
         _machines = append ? [..._machines, ...res.data!.items] : res.data!.items;
         _machinesPagination = res.data!.pagination;
         _machinesPage = page;
+        _machinesError = null;
+      } else if (!append) {
+        _machinesError = res.message ?? res.error ?? 'Failed to load machines. Please check your connection and try again.';
       }
       _loadingMachines = false;
       _loadingMoreMachines = false;
@@ -117,17 +145,20 @@ class _IndividualShellState extends State<IndividualShell> {
   Widget _devicesTab() {
     if (_loadingMachines) {
       return _BrandBackdrop(child: Column(children: [
-        AppHeader(user: _user, onProfile: () => _scaffoldKey.currentState?.openEndDrawer()),
+        AppHeader(user: _user, onProfile: _onProfileTap),
         const Expanded(child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: PwtColors.brand))),
       ]));
     }
+    if (_machinesError != null) {
+      return _DevicesError(user: _user, onProfile: _onProfileTap, onRetry: _loadMachines);
+    }
     if (_machines.isEmpty) {
-      return _DevicesEmpty(user: _user, onProfile: () => _scaffoldKey.currentState?.openEndDrawer(), onBrowse: () => setState(() => _tab = 'products'));
+      return _DevicesEmpty(user: _user, onProfile: _onProfileTap, onBrowse: () => setState(() => _tab = 'products'));
     }
     return IndividualHome(
       machines: _machines,
       user: _user,
-      onProfile: () => _scaffoldKey.currentState?.openEndDrawer(),
+      onProfile: _onProfileTap,
       onMaintenance: (m) => _push(MaintenanceSheet(machine: m)),
       onTrackOrder: () => _push(const OrdersScreen(role: AccountKind.individual)),
       loadingMore: _loadingMoreMachines,
@@ -140,24 +171,48 @@ class _IndividualShellState extends State<IndividualShell> {
   @override
   Widget build(BuildContext context) {
     final s = Strings.of(context.watch<AppState>().lang);
+    final isGuest = _isGuest;
+    final tabs = isGuest ? ['home', 'products'] : ['home', 'products', 'devices', 'orders'];
 
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: PwtColors.bg,
       endDrawer: ProfileDrawer(user: _user, onSelect: _onDrawerSelect),
-      floatingActionButton: FloatingCart(onTap: () => _push(const CartScreen(role: AccountKind.individual))),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const WhatsAppFab(),
+          const SizedBox(height: 14),
+          FloatingCart(onTap: () => _push(const CartScreen(role: AccountKind.individual))),
+        ],
+      ),
       body: SafeArea(
         bottom: false,
         child: IndexedStack(
-          index: ['devices', 'products'].indexOf(_tab),
+          index: tabs.indexOf(_tab),
           children: [
-            _devicesTab(),
+            _HomeTab(
+              user: _user,
+              onProfile: _onProfileTap,
+              isGuest: isGuest,
+              onMachines: () => setState(() => _tab = 'devices'),
+              onOrders: () => setState(() => _tab = 'orders'),
+              onExplore: () => setState(() => _tab = 'products'),
+            ),
             ProductsScreen(
+              key: _productsKey,
               user: _user,
               role: AccountKind.individual,
-              onProfile: () => _scaffoldKey.currentState?.openEndDrawer(),
+              onProfile: _onProfileTap,
               onOpenProduct: (p) => _push(ProductDetailScreen(product: p, role: AccountKind.individual)),
             ),
+            if (!isGuest) _devicesTab(),
+            if (!isGuest)
+              IndividualOrdersScreen(
+                key: _ordersKey,
+                user: _user,
+                onProfile: _onProfileTap,
+              ),
           ],
         ),
       ),
@@ -165,11 +220,291 @@ class _IndividualShellState extends State<IndividualShell> {
         active: _tab,
         onChanged: (k) {
           setState(() => _tab = k);
-          if (k == 'devices') _loadMachines();
+          if (k == 'devices' && _machinesError != null) _loadMachines();
+          if (k == 'products') _productsKey.currentState?.retryIfFailed();
+          if (k == 'orders') _ordersKey.currentState?.retryIfFailed();
         },
         items: [
-          PwtNavItem(key: 'devices', label: s['devices']!, icon: PwtIcons.drop),
+          PwtNavItem(key: 'home', label: s['home']!, icon: Icons.home_outlined),
           PwtNavItem(key: 'products', label: s['shop']!, icon: PwtIcons.cube),
+          if (!isGuest) ...[
+            PwtNavItem(key: 'devices', label: s['devices']!, icon: PwtIcons.drop),
+            PwtNavItem(key: 'orders', label: s['orders']!, icon: PwtIcons.orders),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Home tab: hero (ported from myWeb2's storefront hero) + quick actions ───
+class _HomeTab extends StatelessWidget {
+  const _HomeTab({required this.user, required this.onProfile, required this.isGuest, this.onMachines, this.onOrders, this.onExplore});
+  final AppUser user;
+  final VoidCallback onProfile;
+  final bool isGuest;
+  final VoidCallback? onMachines;
+  final VoidCallback? onOrders;
+  final VoidCallback? onExplore;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final s = Strings.of(app.lang);
+    final ar = app.isArabic;
+    final firstName = user.name.trim().isNotEmpty ? user.name.trim().split(' ').first : '';
+
+    return _BrandBackdrop(
+      opacity: 0.1,
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          AppHeader(user: user, onProfile: onProfile),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (!isGuest && firstName.isNotEmpty) ...[
+                  Text.rich(
+                    TextSpan(
+                      style: PwtType.headline(arabic: ar).copyWith(fontSize: 20, height: 1.3),
+                      children: [
+                        TextSpan(text: '${s['hello']!}\n', style: const TextStyle(fontWeight: FontWeight.w400, fontSize: 14)),
+                        TextSpan(text: '$firstName 👋'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                Row(
+                  children: [
+                    const Icon(PwtIcons.drop, size: 16, color: PwtColors.brand),
+                    const SizedBox(width: 6),
+                    Text(s['pureWaterPureLife']!, style: PwtType.eyebrow(color: PwtColors.brand).copyWith(fontSize: 12, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text.rich(
+                  TextSpan(
+                    style: PwtType.headline(arabic: ar).copyWith(fontSize: 27, height: 1.2),
+                    children: [
+                      TextSpan(text: s['homeHeadlinePlain']!),
+                      TextSpan(text: s['homeHeadlineAccent']!, style: const TextStyle(color: PwtColors.brand)),
+                      TextSpan(text: ' ${s['homeHeadlineTail']!}'),
+                    ],
+                  ),
+                ),
+                // const SizedBox(height: 10),
+                // Text(s['homeHeroSub']!, style: PwtType.body(color: PwtColors.textSec, arabic: ar).copyWith(fontSize: 13.5, height: 1.55)),
+
+                const SizedBox(height: 18),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Image.asset(
+                    'assets/images/podium-hero.png',
+                    height: 210,
+                    width: double.infinity,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const SizedBox(height: 210),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                PwtButton(label: s['exploreProducts']!, trailing: PwtIcons.arrow, onPressed: onExplore),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+            child: isGuest
+                ? Column(
+                    children: [
+                      Center(child: Eyebrow(ar ? 'حلول تناسب الجميع' : 'Solutions for Everyone')),
+                      const SizedBox(height: 10),
+                      Text(
+                        ar ? 'اختر ما يناسبك' : 'Choose What Suits You Best',
+                        textAlign: TextAlign.center,
+                        style: PwtType.headline(arabic: ar).copyWith(fontSize: 20),
+                      ),
+                      const SizedBox(height: 18),
+                      _SolutionCard(
+                        icon: PwtIcons.user,
+                        title: ar ? 'للأفراد' : 'For Individuals',
+                        intro: ar ? 'اشترِ أو استأجر أنظمة تنقية مياه متطورة لمنزلك.' : 'Buy or rent premium water purification systems for your home.',
+                        points: ar
+                            ? const ['شراء فوري أو خيارات إيجار مرنة', 'طلبات بالجملة', 'توصيل وتركيب سريع']
+                            : const ['Instant purchase or flexible rental options', 'Bulk orders', 'Fast delivery & installation'],
+                        image: 'assets/images/sol-individuals.png',
+                        ctaLabel: ar ? 'تسوّق الآن' : 'Shop Now',
+                        solid: true,
+                        onTap: onExplore,
+                      ),
+                      const SizedBox(height: 14),
+                      _SolutionCard(
+                        icon: PwtIcons.building,
+                        title: ar ? 'للشركات' : 'For Companies',
+                        intro: ar ? 'احصل على عرض سعر مخصص يناسب احتياجات شركتك.' : 'Get a customised quotation tailored to your business needs.',
+                        points: ar
+                            ? const ['تسعير مخصص', 'طلبات بالجملة', 'مدير حساب مخصص', 'دعم مخصص']
+                            : const ['Personalised pricing', 'Bulk orders', 'Dedicated account manager', 'Dedicated support'],
+                        image: 'assets/images/sol-companies.png',
+                        ctaLabel: s['requestQuotation']!,
+                        solid: false,
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RequestRfqScreen())),
+                      ),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      _QuickActionCard(
+                          icon: PwtIcons.drop,
+                          title: s['devices']!,
+                          subtitle: s['myMachinesQaSub']!,
+                          onTap: onMachines),
+                      const SizedBox(height: 12),
+                      _QuickActionCard(icon: PwtIcons.orders, title: s['orders']!, subtitle: s['ordersQaSub']!, onTap: onOrders, color: PwtColors.success),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickActionCard extends StatelessWidget {
+  const _QuickActionCard({required this.icon, required this.title, required this.subtitle, this.onTap, this.color = PwtColors.brand});
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: PwtColors.surface,
+          border: Border.all(color: PwtColors.hairline),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 20, color: color),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: PwtType.label(weight: FontWeight.w700).copyWith(fontSize: 14.5)),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: PwtType.caption(color: PwtColors.textSec).copyWith(fontSize: 12)),
+                ],
+              ),
+            ),
+            const Icon(PwtIcons.caret, size: 16, color: PwtColors.textTer),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Guest-only "Solutions" card (ported from myWeb2's homepage) ───
+class _SolutionCard extends StatelessWidget {
+  const _SolutionCard({
+    required this.icon,
+    required this.title,
+    required this.intro,
+    required this.points,
+    required this.image,
+    required this.ctaLabel,
+    required this.solid,
+    this.onTap,
+  });
+  final IconData icon;
+  final String title;
+  final String intro;
+  final List<String> points;
+  final String image;
+  final String ctaLabel;
+  final bool solid;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: PwtColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: PwtColors.hairline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(color: PwtColors.brandTint, borderRadius: BorderRadius.circular(10)),
+                      alignment: Alignment.center,
+                      child: Icon(icon, size: 18, color: PwtColors.brand),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(title, style: PwtType.title().copyWith(fontSize: 16, fontWeight: FontWeight.w800))),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(intro, style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13, height: 1.4)),
+                const SizedBox(height: 10),
+                for (final p in points)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(PwtIcons.check, size: 14, color: PwtColors.brand),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(p, style: PwtType.body().copyWith(fontSize: 12.5))),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 10),
+                PwtButton(
+                  label: ctaLabel,
+                  variant: solid ? PwtButtonVariant.primary : PwtButtonVariant.secondary,
+                  size: PwtButtonSize.sm,
+                  onPressed: onTap,
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 130,
+            width: double.infinity,
+            child: Image.asset(
+              image,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(color: PwtColors.surface2),
+            ),
+          ),
         ],
       ),
     );
@@ -260,7 +595,7 @@ class _IndividualHomeState extends State<IndividualHome> {
               itemBuilder: (_, i) {
                 final m = widget.machines[i];
                 final code = m.product.code;
-                final tint = MockData.productById(code)?.tint ?? const Color(0xFF1D4ED8);
+                final tint = MockData.productById(code)?.tint ?? PwtColors.brand;
                 final mId = m.displayName ?? m.serialNumber;
                 return Column(
                   children: [
@@ -603,10 +938,10 @@ class ProductsScreen extends StatefulWidget {
   final ValueChanged<ProductModel> onOpenProduct;
 
   @override
-  State<ProductsScreen> createState() => _ProductsScreenState();
+  State<ProductsScreen> createState() => ProductsScreenState();
 }
 
-class _ProductsScreenState extends State<ProductsScreen> {
+class ProductsScreenState extends State<ProductsScreen> {
   List<ProductModel> _products = [];
   List<CategoryModel> _categories = [];
   bool _loading = true;
@@ -616,6 +951,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
   int? _selectedCategoryId;
   final TextEditingController _searchCtrl = TextEditingController();
   Timer? _debounce;
+  String? _error;
+
+  /// Called by the shell when this tab is reselected — re-fetches only if
+  /// the last attempt failed, so switching tabs doesn't hammer the API on
+  /// the happy path but does recover once connectivity comes back.
+  void retryIfFailed() {
+    if (_error != null) _load();
+  }
 
   @override
   void initState() {
@@ -652,7 +995,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     if (append) {
       setState(() => _loadingMore = true);
     } else {
-      setState(() { _loading = true; _products = []; });
+      setState(() { _loading = true; _products = []; _error = null; });
     }
     final query = _searchCtrl.text.trim();
     final res = await getProducts(
@@ -666,6 +1009,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
         _products = append ? [..._products, ...res.data!.items] : res.data!.items;
         _pagination = res.data!.pagination;
         _page = page;
+        _error = null;
+      } else if (!append) {
+        _error = res.message ?? res.error ?? 'Failed to load products. Please check your connection and try again.';
       }
       _loading = false;
       _loadingMore = false;
@@ -781,13 +1127,36 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 children: [
                   Container(
                     width: 72, height: 72,
-                    decoration: BoxDecoration(color: PwtColors.brandTint, shape: BoxShape.circle),
-                    child: const Icon(PwtIcons.cube, size: 32, color: PwtColors.brand),
+                    decoration: BoxDecoration(
+                      color: _error != null ? PwtColors.error.withValues(alpha: 0.1) : PwtColors.brandTint,
+                      shape: BoxShape.circle,
+                      border: _error != null ? Border.all(color: PwtColors.error) : null,
+                    ),
+                    child: Icon(_error != null ? PwtIcons.warn : PwtIcons.cube, size: 32, color: _error != null ? PwtColors.error : PwtColors.brand),
                   ),
                   const SizedBox(height: 20),
-                  Text(s['products']!, style: PwtType.title().copyWith(fontSize: 20)),
+                  Text(
+                    _error != null
+                        ? (ar ? 'تعذّر تحميل المنتجات' : 'Couldn\'t load products')
+                        : (_searchCtrl.text.trim().isNotEmpty || _selectedCategoryId != null
+                            ? (ar ? 'لا توجد نتائج' : 'No matching products')
+                            : s['products']!),
+                    style: PwtType.title().copyWith(fontSize: 20),
+                  ),
                   const SizedBox(height: 8),
-                  Text(ar ? 'لا توجد منتجات متاحة حالياً.' : 'No products available at the moment.', textAlign: TextAlign.center, style: PwtType.body(color: PwtColors.textSec)),
+                  Text(
+                    _error != null
+                        ? (ar ? 'حدث خطأ ما. يرجى التحقق من الاتصال والمحاولة مرة أخرى.' : 'Something went wrong. Please check your connection and try again.')
+                        : (_searchCtrl.text.trim().isNotEmpty || _selectedCategoryId != null
+                            ? (ar ? 'جرّب بحثاً أو تصنيفاً مختلفاً.' : 'Try a different search or category.')
+                            : (ar ? 'لا توجد منتجات متاحة حالياً.' : 'No products available at the moment.')),
+                    textAlign: TextAlign.center,
+                    style: PwtType.body(color: PwtColors.textSec),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 20),
+                    PwtButton(label: s['retry']!, variant: PwtButtonVariant.soft, onPressed: () => _load()),
+                  ],
                 ],
               ),
             )
@@ -1020,6 +1389,47 @@ class _DevicesEmpty extends StatelessWidget {
   }
 }
 
+// ─── Devices load error ───
+class _DevicesError extends StatelessWidget {
+  const _DevicesError({required this.user, required this.onProfile, required this.onRetry});
+  final AppUser user;
+  final VoidCallback onProfile;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = Strings.of(context.watch<AppState>().lang);
+    return _BrandBackdrop(
+      child: ListView(
+        children: [
+          AppHeader(user: user, onProfile: onProfile),
+          const SizedBox(height: 60),
+          Center(
+            child: Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(color: PwtColors.error.withValues(alpha: 0.1), shape: BoxShape.circle, border: Border.all(color: PwtColors.error)),
+              child: const Icon(PwtIcons.warn, size: 32, color: PwtColors.error),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Center(child: Text(s['devicesLoadError']!, style: PwtType.title().copyWith(fontSize: 20))),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48),
+            child: Text(s['devicesLoadErrorSub']!, textAlign: TextAlign.center, style: PwtType.body(color: PwtColors.textSec)),
+          ),
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48),
+            child: PwtButton(label: s['retry']!, full: true, onPressed: onRetry),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Individual maintenance requests ───
 class IndividualRequestsScreen extends StatefulWidget {
   const IndividualRequestsScreen({super.key, required this.user, required this.onProfile, required this.onSchedule});
@@ -1037,6 +1447,7 @@ class _IndividualRequestsScreenState extends State<IndividualRequestsScreen> {
   bool _loadingMore = false;
   int _page = 1;
   PaginationModel? _pagination;
+  String? _error;
 
   static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   static const _issueLabels = {
@@ -1061,7 +1472,7 @@ class _IndividualRequestsScreenState extends State<IndividualRequestsScreen> {
     if (append) {
       setState(() => _loadingMore = true);
     } else {
-      setState(() { _loading = true; _requests = []; });
+      setState(() { _loading = true; _requests = []; _error = null; });
     }
     final res = await getMaintenanceRequests(page: page);
     if (!mounted) return;
@@ -1070,6 +1481,9 @@ class _IndividualRequestsScreenState extends State<IndividualRequestsScreen> {
         _requests = append ? [..._requests, ...res.data!.items] : res.data!.items;
         _pagination = res.data!.pagination;
         _page = page;
+        _error = null;
+      } else if (!append) {
+        _error = res.message ?? res.error ?? 'Failed to load requests. Please check your connection and try again.';
       }
       _loading = false;
       _loadingMore = false;
@@ -1138,13 +1552,21 @@ class _IndividualRequestsScreenState extends State<IndividualRequestsScreen> {
               children: [
                 Container(
                   width: 110, height: 110,
-                  decoration: BoxDecoration(color: PwtColors.brandTint, shape: BoxShape.circle, border: Border.all(color: PwtColors.brandBorder)),
-                  child: const Icon(PwtIcons.wrench, size: 48, color: PwtColors.brand),
+                  decoration: BoxDecoration(
+                    color: _error != null ? PwtColors.error.withValues(alpha: 0.1) : PwtColors.brandTint,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _error != null ? PwtColors.error : PwtColors.brandBorder),
+                  ),
+                  child: Icon(_error != null ? PwtIcons.warn : PwtIcons.wrench, size: 48, color: _error != null ? PwtColors.error : PwtColors.brand),
                 ),
                 const SizedBox(height: 22),
-                Text(s['noRequestsYet']!, style: PwtType.title().copyWith(fontSize: 22)),
+                Text(_error != null ? s['requestsLoadError']! : s['noRequestsYet']!, style: PwtType.title().copyWith(fontSize: 22)),
                 const SizedBox(height: 8),
-                Text(s['noRequestsSub']!, textAlign: TextAlign.center, style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13.5)),
+                Text(_error != null ? s['requestsLoadErrorSub']! : s['noRequestsSub']!, textAlign: TextAlign.center, style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13.5)),
+                if (_error != null) ...[
+                  const SizedBox(height: 20),
+                  PwtButton(label: s['retry']!, variant: PwtButtonVariant.soft, onPressed: () => _load()),
+                ],
               ],
             ),
           )
@@ -1239,6 +1661,294 @@ class _IndividualRequestsScreenState extends State<IndividualRequestsScreen> {
               textDirection: TextDirection.ltr,
               child: Text(r.machine.displayName ?? r.machine.serialNumber, style: PwtType.mono(size: 11, color: PwtColors.textTer)),
             ),
+          ),
+        ],
+      ),
+    ));
+  }
+}
+
+// ─── Orders tab ───
+class IndividualOrdersScreen extends StatefulWidget {
+  const IndividualOrdersScreen({super.key, required this.user, required this.onProfile});
+  final AppUser user;
+  final VoidCallback onProfile;
+
+  @override
+  State<IndividualOrdersScreen> createState() => _IndividualOrdersScreenState();
+}
+
+class _IndividualOrdersScreenState extends State<IndividualOrdersScreen> {
+  bool _loading = true;
+  bool _loadingMore = false;
+  bool _sortDesc = true;
+  String? _statusFilter;
+  List<OrderModel> _orders = [];
+  int _page = 1;
+  PaginationModel? _pagination;
+  String? _errorMsg;
+
+  static const _statusFilters = <String?>[null, 'pending', 'completed', 'cancelled'];
+  static const _statusFilterLabels = ['All', 'Pending', 'Completed', 'Cancelled'];
+  static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  /// Called by the shell when this tab is reselected — re-fetches only if
+  /// the last attempt failed.
+  void retryIfFailed() {
+    if (_errorMsg != null) _load();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load({int page = 1, bool append = false}) async {
+    if (append) {
+      setState(() => _loadingMore = true);
+    } else {
+      setState(() { _loading = true; _orders = []; _errorMsg = null; });
+    }
+    final res = await getOrders(page: page, status: _statusFilter, sort: 'created_at', order: _sortDesc ? 'desc' : 'asc');
+    if (!mounted) return;
+    setState(() {
+      if (res.success && res.data != null) {
+        _orders = append ? [..._orders, ...res.data!.items] : res.data!.items;
+        _pagination = res.data!.pagination;
+        _page = page;
+        _errorMsg = null;
+      } else if (!append) {
+        _errorMsg = res.message ?? res.error ?? 'Failed to load orders. Please check your connection and try again.';
+      }
+      _loading = false;
+      _loadingMore = false;
+    });
+  }
+
+  void _loadMore() => _load(page: _page + 1, append: true);
+
+  String _fmtDate(String? iso) {
+    if (iso == null) return '—';
+    try {
+      final dt = DateTime.parse(iso);
+      return '${dt.day} ${_monthsShort[dt.month - 1]} ${dt.year}';
+    } catch (_) { return '—'; }
+  }
+
+  String _shortId(String publicId) =>
+      '#${publicId.length >= 8 ? publicId.substring(0, 8).toUpperCase() : publicId.toUpperCase()}';
+
+  Color _statusColor(String st) => switch (st) {
+    'pending'   => PwtColors.warning,
+    'confirmed' => PwtColors.brand,
+    'scheduled' => PwtColors.brand,
+    'completed' => PwtColors.success,
+    'cancelled' => PwtColors.error,
+    _           => PwtColors.textSec,
+  };
+
+  String _statusLabel(String st) => switch (st) {
+    'pending'   => 'Pending',
+    'confirmed' => 'Confirmed',
+    'scheduled' => 'Scheduled',
+    'completed' => 'Completed',
+    'cancelled' => 'Cancelled',
+    _           => st,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final s = Strings.of(app.lang);
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        AppHeader(user: widget.user, onProfile: widget.onProfile),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Eyebrow(app.isArabic ? 'طلبياتك' : 'Your orders'),
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(child: Text(s['orders']!, style: PwtType.headline().copyWith(fontSize: 28))),
+                  GestureDetector(
+                    onTap: () { setState(() { _sortDesc = !_sortDesc; _page = 1; }); _load(); },
+                    child: Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(color: PwtColors.surface, border: Border.all(color: PwtColors.hairline), borderRadius: BorderRadius.circular(999)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(PwtIcons.sort, size: 15, color: PwtColors.textSec),
+                        const SizedBox(width: 6),
+                        Text(_sortDesc ? s['newestFirst']! : s['oldestFirst']!, style: PwtType.label(weight: FontWeight.w600).copyWith(fontSize: 12.5)),
+                      ]),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: List.generate(_statusFilters.length, (i) {
+                    final on = _statusFilter == _statusFilters[i];
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() { _statusFilter = _statusFilters[i]; _page = 1; });
+                        _load();
+                      },
+                      child: Container(
+                        margin: EdgeInsets.only(right: i < _statusFilters.length - 1 ? 8 : 0),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: on ? PwtColors.brandTint : PwtColors.surface,
+                          border: Border.all(color: on ? PwtColors.brand : PwtColors.hairline, width: on ? 1.5 : 1),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(_statusFilterLabels[i], style: PwtType.label(weight: on ? FontWeight.w700 : FontWeight.w500, color: on ? PwtColors.brand : PwtColors.textSec).copyWith(fontSize: 13)),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 60),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: PwtColors.brand)),
+          )
+        else if (_orders.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(30, 40, 30, 24),
+            child: Column(
+              children: [
+                Container(
+                  width: 96,
+                  height: 96,
+                  decoration: BoxDecoration(
+                    color: _errorMsg != null ? PwtColors.error.withValues(alpha: 0.1) : PwtColors.brandTint,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _errorMsg != null ? PwtColors.error : PwtColors.brandBorder),
+                  ),
+                  child: Icon(_errorMsg != null ? PwtIcons.warn : PwtIcons.orders, size: 40, color: _errorMsg != null ? PwtColors.error : PwtColors.brand),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  _errorMsg != null ? s['ordersLoadError']! : (_statusFilter == null ? s['noOrdersYet']! : s['noOrdersFiltered']!),
+                  style: PwtType.title().copyWith(fontSize: 20),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _errorMsg != null ? s['ordersLoadErrorSub']! : (_statusFilter == null ? s['noOrdersSub']! : s['noOrdersFilteredSub']!),
+                  textAlign: TextAlign.center,
+                  style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13.5),
+                ),
+                if (_errorMsg != null) ...[
+                  const SizedBox(height: 20),
+                  PwtButton(label: s['retry']!, variant: PwtButtonVariant.soft, onPressed: () => _load()),
+                ],
+              ],
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              children: [
+                for (final o in _orders)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _orderCard(o, s),
+                  ),
+                if (_pagination != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Page $_page of ${_pagination!.lastPage ?? 1} · ${_pagination!.total ?? _orders.length} total',
+                    textAlign: TextAlign.center,
+                    style: PwtType.caption().copyWith(fontSize: 12),
+                  ),
+                  if (_page < (_pagination!.lastPage ?? 1)) ...[
+                    const SizedBox(height: 12),
+                    if (_loadingMore)
+                      const Center(child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: PwtColors.brand),
+                      ))
+                    else
+                      PwtButton(label: 'Load more', variant: PwtButtonVariant.soft, full: true, onPressed: _loadMore),
+                  ],
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _orderCard(OrderModel o, Map<String, String> s) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OrderApiDetailScreen(id: o.id))),
+      child: PwtCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Directionality(textDirection: TextDirection.ltr, child: Text(o.displayName ?? _shortId(o.publicId), style: PwtType.mono(size: 11, color: PwtColors.brand, weight: FontWeight.w600))),
+              Pill(label: _statusLabel(o.status), color: _statusColor(o.status), dot: true),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Flexible(
+                child: Text(
+                  o.firstProductName ?? 'Order #${o.id}',
+                  style: PwtType.label(weight: FontWeight.w600).copyWith(fontSize: 14.5),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (o.remainingItemsCount > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(color: PwtColors.brandTint, borderRadius: BorderRadius.circular(999)),
+                  child: Text('+${o.remainingItemsCount}', style: PwtType.mono(size: 11, color: PwtColors.brand, weight: FontWeight.w700)),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text('${s['placed']} ${_fmtDate(o.placedAt)}', style: PwtType.caption().copyWith(fontSize: 12)),
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Divider(height: 1, color: PwtColors.hairline),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text('${o.currency} ', style: PwtType.caption().copyWith(fontSize: 12, fontWeight: FontWeight.w600)),
+                  Text(o.totalAmount, style: PwtType.subtitle().copyWith(fontSize: 16, fontWeight: FontWeight.w700)),
+                  if (o.term == 'rent') Text(s['perMonth']!, style: PwtType.caption()),
+                ],
+              ),
+              const Icon(PwtIcons.caret, size: 16, color: PwtColors.textTer),
+            ],
           ),
         ],
       ),

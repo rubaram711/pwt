@@ -63,7 +63,7 @@ class _CompanyDevicesScreenState extends State<CompanyDevicesScreen> {
         _currentStatus = status;
       });
     } else {
-      setState(() { _loading = false; _error = res.message ?? 'Failed to load devices.'; });
+      setState(() { _loading = false; _error = res.message ?? 'Failed to load machines.'; });
     }
   }
 
@@ -78,18 +78,18 @@ class _CompanyDevicesScreenState extends State<CompanyDevicesScreen> {
       isCompany: true,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         DashHeader(
-          title: 'Devices',
+          title: 'Machines',
           subtitle: 'All water systems across your business account.',
           action: PwtButton('Request Quotation', icon: Icons.add, onPressed: () => Navigator.of(context).pushNamed('/rfq')),
         ),
         KpiGrid(tiles: [
-          KpiTile(label: 'Total Devices', value: total, sub: 'Across all sites', icon: Icons.inventory_2_outlined, iconColor: AppColors.blue700),
+          KpiTile(label: 'Total Machines', value: total, sub: 'Across all sites', icon: Icons.inventory_2_outlined, iconColor: AppColors.blue700),
           KpiTile(label: 'Rented', value: rented, sub: 'Monthly billing', icon: Icons.autorenew, iconColor: AppColors.amber),
           KpiTile(label: 'Purchased', value: purchased, sub: 'Owned outright', icon: Icons.check_circle_outline, iconColor: AppColors.green600),
         ]),
         const SizedBox(height: 18),
         DashCard(
-          title: 'All Devices',
+          title: 'All Machines',
           action: _tabBar(),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (_loading)
@@ -102,7 +102,7 @@ class _CompanyDevicesScreenState extends State<CompanyDevicesScreen> {
                 child: Center(child: Column(children: [
                   Container(width: 56, height: 56, decoration: BoxDecoration(color: AppColors.soft, shape: BoxShape.circle), child: const Icon(Icons.water_drop_outlined, size: 26, color: AppColors.ink400)),
                   const SizedBox(height: 12),
-                  Text('No devices in this category', style: AppText.label),
+                  Text('No machines in this category', style: AppText.label),
                   const SizedBox(height: 4),
                   Text('Try selecting a different filter above.', style: AppText.muted),
                 ])),
