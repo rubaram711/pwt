@@ -15,6 +15,8 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../state/cart_state.dart';
 import '../widgets/chrome.dart';
+import '../widgets/empty_states.dart';
+import '../widgets/floating_trial_badge.dart';
 import '../widgets/layout.dart';
 import '../widgets/primitives.dart';
 import '../widgets/pwt_icons.dart';
@@ -194,6 +196,7 @@ class _BusinessShellState extends State<BusinessShell> {
                     onLoadMore: (_machinesPagination != null && _machinesPage < (_machinesPagination!.lastPage ?? 1) && !_loadingMoreMachines)
                         ? () => _loadMachines(page: _machinesPage + 1, append: true)
                         : null,
+                    onBrowse: () => setState(() => _tab = 'products'),
                   ),
             BusinessRequestsScreen(
               key: _requestsKey,
@@ -205,6 +208,7 @@ class _BusinessShellState extends State<BusinessShell> {
               key: _ordersKey,
               user: _user,
               onProfile: () => _scaffoldKey.currentState?.openEndDrawer(),
+              onBrowse: () => setState(() => _tab = 'products'),
             ),
             ProductsScreen(
               key: _productsKey,
@@ -253,75 +257,86 @@ class _BusinessHomeTab extends StatelessWidget {
     final ar = app.isArabic;
     final firstName = user.name.trim().isNotEmpty ? user.name.trim().split(' ').first : '';
 
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        AppHeader(user: user, onProfile: onProfile),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (firstName.isNotEmpty) ...[
+    return BrandBackdrop(
+      opacity: 0.1,
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          AppHeader(user: user, onProfile: onProfile),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (firstName.isNotEmpty) ...[
+                  Text.rich(
+                    TextSpan(
+                      style: PwtType.headline(arabic: ar).copyWith(fontSize: 20, height: 1.3),
+                      children: [
+                        TextSpan(text: '${s['hello']!}\n', style: const TextStyle(fontWeight: FontWeight.w400, fontSize: 14)),
+                        TextSpan(text: '$firstName 👋'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                Row(
+                  children: [
+                    const Icon(PwtIcons.drop, size: 16, color: PwtColors.brand),
+                    const SizedBox(width: 6),
+                    Text(s['pureWaterPureLife']!, style: PwtType.eyebrow(color: PwtColors.brand).copyWith(fontSize: 12, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+                const SizedBox(height: 10),
                 Text.rich(
                   TextSpan(
-                    style: PwtType.headline(arabic: ar).copyWith(fontSize: 20, height: 1.3),
+                    style: PwtType.headline(arabic: ar).copyWith(fontSize: 27, height: 1.2),
                     children: [
-                      TextSpan(text: '${s['hello']!}\n', style: const TextStyle(fontWeight: FontWeight.w400, fontSize: 14)),
-                      TextSpan(text: '$firstName 👋'),
+                      TextSpan(text: s['homeHeadlinePlain']!),
+                      TextSpan(text: s['homeHeadlineAccent']!, style: const TextStyle(color: PwtColors.brand)),
+                      TextSpan(text: ' ${s['homeHeadlineTail']!}'),
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
+                // const SizedBox(height: 10),
+                // Text(s['homeHeroSub']!, style: PwtType.body(color: PwtColors.textSec, arabic: ar).copyWith(fontSize: 13.5, height: 1.55)),
+
+                const SizedBox(height: 18),
+                Stack(clipBehavior: Clip.none, children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.asset(
+                      'assets/images/podium-hero.png',
+                      height: 210,
+                      width: double.infinity,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const SizedBox(height: 210),
+                    ),
+                  ),
+                  const Positioned(
+                    top: -10,
+                    right: -6,
+                    child: FloatingTrialBadge(),
+                  ),
+                ]),
+                const SizedBox(height: 16),
+                PwtButton(label: s['exploreProducts']!, trailing: PwtIcons.arrow, onPressed: onExplore),
               ],
-              Row(
-                children: [
-                  const Icon(PwtIcons.drop, size: 16, color: PwtColors.brand),
-                  const SizedBox(width: 6),
-                  Text(s['pureWaterPureLife']!, style: PwtType.eyebrow(color: PwtColors.brand).copyWith(fontSize: 12, fontWeight: FontWeight.w700)),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text.rich(
-                TextSpan(
-                  style: PwtType.headline(arabic: ar).copyWith(fontSize: 27, height: 1.2),
-                  children: [
-                    TextSpan(text: s['homeHeadlinePlain']!),
-                    TextSpan(text: s['homeHeadlineAccent']!, style: const TextStyle(color: PwtColors.brand)),
-                    TextSpan(text: ' ${s['homeHeadlineTail']!}'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(s['homeHeroSub']!, style: PwtType.body(color: PwtColors.textSec, arabic: ar).copyWith(fontSize: 13.5, height: 1.55)),
-              const SizedBox(height: 16),
-              PwtButton(label: s['exploreProducts']!, trailing: PwtIcons.arrow, onPressed: onExplore),
-              const SizedBox(height: 18),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Image.asset(
-                  'assets/images/podium-hero.png',
-                  height: 210,
-                  width: double.infinity,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const SizedBox(height: 210),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-        const SizedBox(height: 24),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-          child: Column(
-            children: [
-              _HomeQuickActionCard(icon: PwtIcons.drop, title: s['devices']!, subtitle: s['devicesQaSub']!, onTap: onMachines),
-              const SizedBox(height: 12),
-              _HomeQuickActionCard(icon: PwtIcons.orders, title: s['orders']!, subtitle: s['ordersQaSub']!, onTap: onOrders, color: PwtColors.success),
-            ],
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+            child: Column(
+              children: [
+                _HomeQuickActionCard(icon: PwtIcons.drop, title: s['devices']!, subtitle: s['devicesQaSub']!, onTap: onMachines),
+                const SizedBox(height: 12),
+                _HomeQuickActionCard(icon: PwtIcons.orders, title: s['orders']!, subtitle: s['ordersQaSub']!, onTap: onOrders, color: PwtColors.success),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -375,7 +390,7 @@ class _HomeQuickActionCard extends StatelessWidget {
 
 // ─── Fleet ───
 class BusinessDevicesScreen extends StatelessWidget {
-  const BusinessDevicesScreen({super.key, required this.user, required this.machines, required this.loading, this.loadingMore = false, this.errorMsg, this.onRetry, required this.rented, required this.purchased, this.statusFilter, this.onFilterChange, required this.onProfile, required this.onMaintenance, this.onLoadMore});
+  const BusinessDevicesScreen({super.key, required this.user, required this.machines, required this.loading, this.loadingMore = false, this.errorMsg, this.onRetry, required this.rented, required this.purchased, this.statusFilter, this.onFilterChange, required this.onProfile, required this.onMaintenance, this.onLoadMore, this.onBrowse});
   final AppUser user;
   final List<MachineModel> machines;
   final bool loading;
@@ -389,11 +404,16 @@ class BusinessDevicesScreen extends StatelessWidget {
   final VoidCallback onProfile;
   final ValueChanged<MachineModel> onMaintenance;
   final VoidCallback? onLoadMore;
+  final VoidCallback? onBrowse;
 
   @override
   Widget build(BuildContext context) {
     final s = Strings.of(context.watch<AppState>().lang);
     final total = rented + purchased;
+    // Hide stats/filters for the true empty state (no data, no active
+    // filter, no error) so the empty-state design isn't cluttered with a
+    // "0 / 0 / 0" stat card and filter chips above it.
+    final trueEmpty = !loading && machines.isEmpty && errorMsg == null && statusFilter == null;
 
     return ListView(
       padding: EdgeInsets.zero,
@@ -411,20 +431,23 @@ class BusinessDevicesScreen extends StatelessWidget {
                   Expanded(child: Text(user.company!.name, overflow: TextOverflow.ellipsis, style: PwtType.caption().copyWith(fontSize: 12))),
                 ],
               ),
-              const SizedBox(height: 14),
-              PwtCard(
-                padding: EdgeInsets.zero,
-                child: Row(
-                  children: [
-                    _stat(s['devicesCount']!, Text('$total', style: _statStyle), '${s['rent']} · ${s['buy']}'),
-                    _stat(s['rent']!, Text('$rented', style: _statStyle.copyWith(color: rented > 0 ? PwtColors.brand : PwtColors.textTer)), 'rented machines', divider: true),
-                    _stat(s['buy']!, Text('$purchased', style: _statStyle.copyWith(color: purchased > 0 ? PwtColors.success : PwtColors.textTer)), 'purchased', divider: true),
-                  ],
+              if (!trueEmpty) ...[
+                const SizedBox(height: 14),
+                PwtCard(
+                  padding: EdgeInsets.zero,
+                  child: Row(
+                    children: [
+                      _stat(s['devicesCount']!, Text('$total', style: _statStyle), '${s['rent']} · ${s['buy']}'),
+                      _stat(s['rent']!, Text('$rented', style: _statStyle.copyWith(color: rented > 0 ? PwtColors.brand : PwtColors.textTer)), 'rented machines', divider: true),
+                      _stat(s['buy']!, Text('$purchased', style: _statStyle.copyWith(color: purchased > 0 ? PwtColors.success : PwtColors.textTer)), 'purchased', divider: true),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
+        if (!trueEmpty)
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
           child: Row(
@@ -456,7 +479,9 @@ class BusinessDevicesScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           child: loading
               ? const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 32), child: CircularProgressIndicator(strokeWidth: 2, color: PwtColors.brand)))
-              : machines.isEmpty
+              : machines.isEmpty && errorMsg == null && statusFilter == null
+                  ? DevicesEmptyState(business: true, onBrowse: onBrowse ?? () {})
+                  : machines.isEmpty
                   ? Padding(
                       padding: const EdgeInsets.symmetric(vertical: 24),
                       child: Column(
@@ -473,14 +498,14 @@ class BusinessDevicesScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 18),
                           Text(
-                            errorMsg != null ? s['devicesLoadError']! : (statusFilter == null ? s['noDevicesYet']! : 'No machines match this filter'),
+                            errorMsg != null ? s['devicesLoadError']! : 'No machines match this filter',
                             style: PwtType.title().copyWith(fontSize: 18),
                           ),
                           const SizedBox(height: 8),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 20),
                             child: Text(
-                              errorMsg != null ? s['devicesLoadErrorSub']! : (statusFilter == null ? s['noDevicesSub']! : 'Try a different filter.'),
+                              errorMsg != null ? s['devicesLoadErrorSub']! : 'Try a different filter.',
                               textAlign: TextAlign.center,
                               style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13),
                             ),
@@ -900,9 +925,10 @@ class _RequestCard extends StatelessWidget {
 
 // ─── Orders ───
 class BusinessOrdersScreen extends StatefulWidget {
-  const BusinessOrdersScreen({super.key, required this.user, required this.onProfile});
+  const BusinessOrdersScreen({super.key, required this.user, required this.onProfile, this.onBrowse});
   final AppUser user;
   final VoidCallback onProfile;
+  final VoidCallback? onBrowse;
 
   @override
   State<BusinessOrdersScreen> createState() => _BusinessOrdersScreenState();
@@ -995,6 +1021,10 @@ class _BusinessOrdersScreenState extends State<BusinessOrdersScreen> {
   @override
   Widget build(BuildContext context) {
     final s = Strings.of(context.watch<AppState>().lang);
+    // Hide the sort toggle and status filter chips for the true empty state
+    // (no data, no active filter, no error) — the empty-state design reads
+    // cleaner without controls that have nothing to act on.
+    final trueEmpty = !_loading && _orders.isEmpty && _errorMsg == null && _statusFilter == null;
     return ListView(
       padding: EdgeInsets.zero,
       children: [
@@ -1010,6 +1040,7 @@ class _BusinessOrdersScreenState extends State<BusinessOrdersScreen> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Expanded(child: Text(s['orders']!, style: PwtType.headline().copyWith(fontSize: 28))),
+                  if (!trueEmpty)
                   GestureDetector(
                     onTap: () { setState(() { _sortDesc = !_sortDesc; _page = 1; }); _load(); },
                     child: Container(
@@ -1025,31 +1056,33 @@ class _BusinessOrdersScreenState extends State<BusinessOrdersScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: List.generate(_statusFilters.length, (i) {
-                    final on = _statusFilter == _statusFilters[i];
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() { _statusFilter = _statusFilters[i]; _page = 1; });
-                        _load();
-                      },
-                      child: Container(
-                        margin: EdgeInsets.only(right: i < _statusFilters.length - 1 ? 8 : 0),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: on ? PwtColors.brandTint : PwtColors.surface,
-                          border: Border.all(color: on ? PwtColors.brand : PwtColors.hairline, width: on ? 1.5 : 1),
-                          borderRadius: BorderRadius.circular(999),
+              if (!trueEmpty) ...[
+                const SizedBox(height: 14),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: List.generate(_statusFilters.length, (i) {
+                      final on = _statusFilter == _statusFilters[i];
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() { _statusFilter = _statusFilters[i]; _page = 1; });
+                          _load();
+                        },
+                        child: Container(
+                          margin: EdgeInsets.only(right: i < _statusFilters.length - 1 ? 8 : 0),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: on ? PwtColors.brandTint : PwtColors.surface,
+                            border: Border.all(color: on ? PwtColors.brand : PwtColors.hairline, width: on ? 1.5 : 1),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(_statusFilterLabels[i], style: PwtType.label(weight: on ? FontWeight.w700 : FontWeight.w500, color: on ? PwtColors.brand : PwtColors.textSec).copyWith(fontSize: 13)),
                         ),
-                        child: Text(_statusFilterLabels[i], style: PwtType.label(weight: on ? FontWeight.w700 : FontWeight.w500, color: on ? PwtColors.brand : PwtColors.textSec).copyWith(fontSize: 13)),
-                      ),
-                    );
-                  }),
+                      );
+                    }),
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -1059,6 +1092,9 @@ class _BusinessOrdersScreenState extends State<BusinessOrdersScreen> {
             child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: PwtColors.brand)),
           )
         else
+          if (trueEmpty)
+            OrdersEmptyState(onBrowse: widget.onBrowse ?? () {})
+          else
           if (_orders.isEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(30, 40, 30, 24),
@@ -1076,12 +1112,12 @@ class _BusinessOrdersScreenState extends State<BusinessOrdersScreen> {
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    _errorMsg != null ? s['ordersLoadError']! : (_statusFilter == null ? s['noOrdersYet']! : s['noOrdersFiltered']!),
+                    _errorMsg != null ? s['ordersLoadError']! : s['noOrdersFiltered']!,
                     style: PwtType.title().copyWith(fontSize: 20),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _errorMsg != null ? s['ordersLoadErrorSub']! : (_statusFilter == null ? s['noOrdersSub']! : s['noOrdersFilteredSub']!),
+                    _errorMsg != null ? s['ordersLoadErrorSub']! : s['noOrdersFilteredSub']!,
                     textAlign: TextAlign.center,
                     style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13.5),
                   ),
@@ -1227,27 +1263,8 @@ class _BusinessEmpty extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 40),
-        Center(
-          child: Container(
-            width: 110,
-            height: 110,
-            decoration: BoxDecoration(color: PwtColors.brandTint, shape: BoxShape.circle, border: Border.all(color: PwtColors.brandBorder)),
-            child: const Icon(PwtIcons.briefcase, size: 48, color: PwtColors.brand),
-          ),
-        ),
-        const SizedBox(height: 22),
-        Center(child: Text(s['noFleetYet']!, style: PwtType.title().copyWith(fontSize: 22))),
         const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: Text(s['noFleetSub']!, textAlign: TextAlign.center, style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13.5)),
-        ),
-        const SizedBox(height: 24),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: PwtButton(label: s['exploreProducts']!, full: true, icon: PwtIcons.cube, onPressed: onBrowse),
-        ),
+        DevicesEmptyState(business: true, onBrowse: onBrowse),
       ],
     );
   }

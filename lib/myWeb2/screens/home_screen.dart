@@ -3,6 +3,7 @@ import '../theme/tokens.dart';
 import '../theme/app_theme.dart';
 import '../widgets/site_chrome.dart';
 import '../widgets/common.dart';
+import '../widgets/floating_trial_badge.dart';
 import '../../Models/Products/products_model.dart';
 import '../../Backend/Products/get_filtered_products.dart';
 
@@ -95,8 +96,15 @@ class _Hero extends StatelessWidget {
                 flex: wide ? 6 : 0,
                 child: Padding(
                   padding: EdgeInsets.only(top: wide ? 0 : 30),
-                  child: Image.asset('assets/images/podium-hero.png', fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const SizedBox(height: 420)),
+                  child: Stack(clipBehavior: Clip.none, children: [
+                    Image.asset('assets/images/podium-hero.png', fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const SizedBox(height: 420)),
+                    const Positioned(
+                      top: -16,
+                      right: -8,
+                      child: FloatingTrialBadge(),
+                    ),
+                  ]),
                 ),
               ),
             ],

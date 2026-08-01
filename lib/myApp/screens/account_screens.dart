@@ -1291,6 +1291,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _newPw = TextEditingController();
   final _confPw = TextEditingController();
   bool _pwDone = false;
+  bool _savingPw = false;
+  String? _pwError;
 
   @override
   void dispose() {
@@ -1300,74 +1302,199 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
+  // ── Password strength (same rules as the forgot-password flow) ──
+  bool _hasLength(String p) => p.length >= 8;
+  bool _hasUpper(String p) => p.contains(RegExp(r'[A-Z]'));
+  bool _hasLower(String p) => p.contains(RegExp(r'[a-z]'));
+  bool _hasDigit(String p) => p.contains(RegExp(r'[0-9]'));
+  bool _hasSymbol(String p) => p.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'));
+
+  int _strength(String p) =>
+      [_hasLength(p), _hasUpper(p), _hasLower(p), _hasDigit(p), _hasSymbol(p)].where((v) => v).length;
+
+  Color _strengthColor(int s) {
+    if (s <= 2) return PwtColors.error;
+    if (s == 3) return PwtColors.warning;
+    if (s == 4) return PwtColors.brandSoft;
+    return PwtColors.success;
+  }
+
+  bool get _newPasswordValid =>
+      _hasLength(_newPw.text) && _hasUpper(_newPw.text) && _hasLower(_newPw.text) && _hasDigit(_newPw.text) && _hasSymbol(_newPw.text);
+
+  Widget _chip(String label, bool met) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: met ? PwtColors.successFill : PwtColors.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: met ? PwtColors.successBorder : PwtColors.hairline2),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            met ? PwtIcons.check : Icons.circle_outlined,
+            size: 12,
+            color: met ? PwtColors.success : PwtColors.textTer,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: PwtType.label(color: met ? PwtColors.success : PwtColors.textTer).copyWith(fontSize: 11.5),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = Strings.of(context.watch<AppState>().lang);
-    final rows = [
-      (k: 'maintenance', label: s['notifMaintenance']!, sub: s['notifMaintenanceSub']!, icon: PwtIcons.wrench),
-      (k: 'billing', label: s['notifBilling']!, sub: s['notifBillingSub']!, icon: PwtIcons.card),
-      (k: 'orders', label: s['notifOrders']!, sub: s['notifOrdersSub']!, icon: PwtIcons.orders),
-      (k: 'offers', label: s['notifOffers']!, sub: s['notifOffersSub']!, icon: PwtIcons.bolt),
-    ];
+    // Only used by the Notifications section, hidden for now below.
+    // final rows = [
+    //   (k: 'maintenance', label: s['notifMaintenance']!, sub: s['notifMaintenanceSub']!, icon: PwtIcons.wrench),
+    //   (k: 'billing', label: s['notifBilling']!, sub: s['notifBillingSub']!, icon: PwtIcons.card),
+    //   (k: 'orders', label: s['notifOrders']!, sub: s['notifOrdersSub']!, icon: PwtIcons.orders),
+    //   (k: 'offers', label: s['notifOffers']!, sub: s['notifOffersSub']!, icon: PwtIcons.bolt),
+    // ];
 
     return DetailScaffold(
       title: s['settings'],
       body: ListView(
         padding: const EdgeInsets.only(bottom: 32),
         children: [
-          Section(
-            title: s['notifications']!,
-            child: PwtCard(
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  for (int i = 0; i < rows.length; i++)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      decoration: BoxDecoration(border: i == rows.length - 1 ? null : const Border(bottom: BorderSide(color: PwtColors.hairline))),
-                      child: Row(children: [
-                        Icon(rows[i].icon, size: 18, color: PwtColors.textSec),
-                        const SizedBox(width: 14),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(rows[i].label, style: PwtType.label(weight: FontWeight.w500).copyWith(fontSize: 14)),
-                          const SizedBox(height: 2),
-                          Text(rows[i].sub, style: PwtType.caption().copyWith(fontSize: 11.5)),
-                        ])),
-                        PwtSwitch(value: _notifs[rows[i].k] ?? false, onChanged: (v) => setState(() => _notifs[rows[i].k] = v)),
-                      ]),
-                    ),
-                ],
-              ),
-            ),
-          ),
+          // Hidden for now — will return later.
+          // Section(
+          //   title: s['notifications']!,
+          //   child: PwtCard(
+          //     padding: EdgeInsets.zero,
+          //     child: Column(
+          //       children: [
+          //         for (int i = 0; i < rows.length; i++)
+          //           Container(
+          //             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          //             decoration: BoxDecoration(border: i == rows.length - 1 ? null : const Border(bottom: BorderSide(color: PwtColors.hairline))),
+          //             child: Row(children: [
+          //               Icon(rows[i].icon, size: 18, color: PwtColors.textSec),
+          //               const SizedBox(width: 14),
+          //               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          //                 Text(rows[i].label, style: PwtType.label(weight: FontWeight.w500).copyWith(fontSize: 14)),
+          //                 const SizedBox(height: 2),
+          //                 Text(rows[i].sub, style: PwtType.caption().copyWith(fontSize: 11.5)),
+          //               ])),
+          //               PwtSwitch(value: _notifs[rows[i].k] ?? false, onChanged: (v) => setState(() => _notifs[rows[i].k] = v)),
+          //             ]),
+          //           ),
+          //       ],
+          //     ),
+          //   ),
+          // ),
           Section(
             title: s['security']!,
             child: Column(children: [
-              PwtField(label: s['currentPassword']!, controller: _curPw, obscure: true),
+              PwtField(label: s['currentPassword']!, controller: _curPw, obscure: true, autofillHints: null),
               const SizedBox(height: 10),
-              PwtField(label: s['newPassword']!, controller: _newPw, obscure: true),
+              PwtField(
+                label: s['newPassword']!,
+                controller: _newPw,
+                obscure: true,
+                autofillHints: null,
+                onChanged: (_) => setState(() {}),
+              ),
+              if (_newPw.text.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    for (int i = 0; i < 5; i++)
+                      Expanded(
+                        child: Container(
+                          height: 4,
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
+                          decoration: BoxDecoration(
+                            color: i < _strength(_newPw.text) ? _strengthColor(_strength(_newPw.text)) : PwtColors.hairline2,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _chip('8+ characters', _hasLength(_newPw.text)),
+                    _chip('Uppercase letter', _hasUpper(_newPw.text)),
+                    _chip('Lowercase letter', _hasLower(_newPw.text)),
+                    _chip('Number', _hasDigit(_newPw.text)),
+                    _chip('Special character', _hasSymbol(_newPw.text)),
+                  ],
+                ),
+              ],
               const SizedBox(height: 10),
-              PwtField(label: s['confirmNewPassword']!, controller: _confPw, obscure: true),
+              PwtField(label: s['confirmNewPassword']!, controller: _confPw, obscure: true, autofillHints: null),
               const SizedBox(height: 8),
               Align(alignment: AlignmentDirectional.centerStart, child: Padding(padding: const EdgeInsets.only(left: 4), child: Text(s['passwordHint']!, style: PwtType.caption().copyWith(fontSize: 11.5)))),
+              if (_pwError != null) ...[
+                const SizedBox(height: 8),
+                Align(alignment: AlignmentDirectional.centerStart, child: Padding(padding: const EdgeInsets.only(left: 4), child: Text(_pwError!, style: PwtType.caption(color: PwtColors.error).copyWith(fontSize: 11.5)))),
+              ],
               const SizedBox(height: 10),
               PwtButton(
-                label: _pwDone ? s['passwordUpdated']! : s['updatePassword']!,
+                label: _savingPw ? '${s['updatePassword']!}…' : (_pwDone ? s['passwordUpdated']! : s['updatePassword']!),
                 variant: _pwDone ? PwtButtonVariant.soft : PwtButtonVariant.primary,
                 full: true,
                 icon: _pwDone ? PwtIcons.check : PwtIcons.lock,
-                onPressed: () {
-                  setState(() => _pwDone = true);
-                  Future.delayed(const Duration(milliseconds: 1800), () {
-                    if (mounted) setState(() => _pwDone = false);
-                  });
-                },
+                disabled: _savingPw,
+                onPressed: _changePassword,
               ),
             ]),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _changePassword() async {
+    final current = _curPw.text;
+    final next = _newPw.text;
+    final confirm = _confPw.text;
+
+    if (current.isEmpty || next.isEmpty || confirm.isEmpty) {
+      setState(() => _pwError = 'Please fill in all three password fields.');
+      return;
+    }
+    if (!_newPasswordValid) {
+      setState(() => _pwError = 'New password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number and a special character.');
+      return;
+    }
+    if (next != confirm) {
+      setState(() => _pwError = 'New password and confirmation do not match.');
+      return;
+    }
+
+    setState(() { _savingPw = true; _pwError = null; });
+    final res = await updateProfile(
+      currentPassword: current,
+      password: next,
+      passwordConfirmation: confirm,
+    );
+    if (!mounted) return;
+    setState(() => _savingPw = false);
+
+    if (res.success) {
+      await web.AppState.instance.updateCurrentPassword(next);
+      _curPw.clear();
+      _newPw.clear();
+      _confPw.clear();
+      setState(() => _pwDone = true);
+      Future.delayed(const Duration(milliseconds: 1800), () {
+        if (mounted) setState(() => _pwDone = false);
+      });
+    } else {
+      setState(() => _pwError = res.message ?? res.error ?? 'Failed to update password. Please try again.');
+    }
   }
 }
 

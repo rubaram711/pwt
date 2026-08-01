@@ -3,9 +3,8 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter_stripe/flutter_stripe.dart' as stripe;
 import 'package:url_launcher/url_launcher.dart';
-import '../../myWeb2/utils/card_formatters.dart';
 import 'package:provider/provider.dart';
 import '../core/theme.dart';
 import '../core/tokens.dart';
@@ -466,16 +465,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _loadingCards = false;
   int? _selectedCardId;
   bool _enterNewCard = false;
-  final _cardNumCtrl      = TextEditingController();
-  final _cardExpMonthCtrl = TextEditingController();
-  final _cardExpYearCtrl  = TextEditingController();
-  final _cardCvcCtrl      = TextEditingController();
-  final _cardNameCtrl = TextEditingController();
+  bool _cardComplete = false;
+  bool _cardTouched = false;
   final _promoCtrl    = TextEditingController();
   final _notesCtrl    = TextEditingController();
 
   // Submission
   bool _submitting = false;
+  bool _confirmingCard = false;
   String? _error;
   String? _dateError;
 
@@ -487,11 +484,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   void dispose() {
-    _cardNumCtrl.dispose();
-    _cardExpMonthCtrl.dispose();
-    _cardExpYearCtrl.dispose();
-    _cardCvcCtrl.dispose();
-    _cardNameCtrl.dispose();
     _promoCtrl.dispose();
     _notesCtrl.dispose();
     super.dispose();
@@ -550,11 +542,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
   }
 
+  // A new card is entered inline on this step via Stripe's embedded
+  // CardField whenever there are no saved cards, or the user opted to use a
+  // different one.
+  bool get _needsNewCard => _cards.isEmpty || _enterNewCard;
+
   bool get _canProceed {
     switch (_step) {
       case 0: return _selectedAddress != null;
       case 1: return _deliveryDate != null && _timeSlot != null;
-      case 2: return _paymentMethod == 'apple_pay' || _paymentMethod == 'google_pay' || (_paymentMethod == 'card' && (_selectedCardId != null || _enterNewCard || (!_loadingCards && _cards.isEmpty)));
+      case 2:
+        if (_paymentMethod == 'apple_pay' || _paymentMethod == 'google_pay') return true;
+        if (_paymentMethod != 'card') return false;
+        return _needsNewCard ? _cardComplete : _selectedCardId != null;
       default: return false;
     }
   }
@@ -588,11 +588,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     final promo = _promoCtrl.text.trim().isEmpty ? null : _promoCtrl.text.trim();
     final notes = _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim();
+    // A new card is captured entirely by Stripe's native PaymentSheet on the
+    // processing screen next — its real digits never touch our backend.
+    // /orders still requires card_number/card_expiry to be present for
+    // payment_method=card, so we send inert placeholders here; the actual
+    // charge is authorized purely via Stripe's client_secret + PaymentSheet,
+    // never from these fields.
+    final usingSavedCard = _paymentMethod == 'card' && !_needsNewCard && _selectedCardId != null;
     String? cardNumber;
     String? cardExpiry;
     String? cardCvc;
     if (_paymentMethod == 'card') {
-      if (!_enterNewCard && _selectedCardId != null) {
+      if (usingSavedCard) {
         final saved = _cards.where((c) => c.id == _selectedCardId).firstOrNull;
         if (saved != null) {
           cardNumber = saved.cardNumberHash ?? saved.lastFour;
@@ -600,12 +607,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           cardCvc    = saved.cvc;
         }
       } else {
-        final num = _cardNumCtrl.text.replaceAll(' ', '');
-        cardNumber = num.isEmpty ? null : num;
-        final m = _cardExpMonthCtrl.text.trim();
-        final y = _cardExpYearCtrl.text.trim();
-        cardExpiry = m.isNotEmpty && y.isNotEmpty ? '$m/$y' : null;
-        cardCvc    = _cardCvcCtrl.text.trim().isEmpty ? null : _cardCvcCtrl.text.trim();
+        cardNumber = '4242424242424242';
+        cardExpiry = '12/99';
+        cardCvc    = '000';
       }
     }
 
@@ -653,18 +657,65 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    // Card / Apple Pay / Google Pay: go to payment processing screen
-    {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => PaymentProcessingScreen(
-          payment: payRes.data!,
-          order: order,
-          subtotal: widget.subtotal,
-          vat: widget.vat,
-        )),
-      );
+    final payment = payRes.data!;
+    final clientSecret = payment.clientSecret ?? '';
+    debugPrint('[Checkout._submit] paymentMethod=$_paymentMethod usingSavedCard=$usingSavedCard clientSecret=${clientSecret.isNotEmpty ? "present" : "MISSING"}');
+
+    if (_paymentMethod == 'card' && _needsNewCard && clientSecret.isNotEmpty) {
+      // New card: confirm the PaymentIntent right here against the still-
+      // mounted Stripe CardField — no separate screen, no browser redirect.
+      setState(() { _submitting = false; _confirmingCard = true; });
+      try {
+        await stripe.Stripe.instance.confirmPayment(
+          paymentIntentClientSecret: clientSecret,
+          data: stripe.PaymentMethodParams.card(
+            paymentMethodData: stripe.PaymentMethodData(
+              billingDetails: stripe.BillingDetails(
+                name: user?.name,
+                email: user?.email,
+                phone: user?.phone,
+              ),
+            ),
+          ),
+        );
+        if (!mounted) return;
+        setState(() => _confirmingCard = false);
+        context.read<CartState>().clearBackend();
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => OrderSuccessScreen(order: order, subtotal: widget.subtotal, vat: widget.vat)),
+        );
+      } on stripe.StripeException catch (e) {
+        debugPrint('[Checkout._submit] StripeException: code=${e.error.code} message=${e.error.message} localized=${e.error.localizedMessage}');
+        if (!mounted) return;
+        final canceled = e.error.code == stripe.FailureCode.Canceled;
+        setState(() {
+          _confirmingCard = false;
+          _error = canceled ? 'Payment canceled.' : (e.error.localizedMessage ?? e.error.message ?? 'Payment failed. Please try again.');
+        });
+      } catch (e) {
+        debugPrint('[Checkout._submit] error: $e');
+        if (!mounted) return;
+        setState(() { _confirmingCard = false; _error = 'Payment failed. Please try again.'; });
+      }
+      return;
     }
+
+    setState(() => _submitting = false);
+
+    // Saved card / Apple Pay / Google Pay: no inline confirmation path wired
+    // up yet — fall back to the hosted-checkout redirect + poll flow, same
+    // as myWeb2 does for these methods.
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => PaymentProcessingScreen(
+        payment: payment,
+        order: order,
+        subtotal: widget.subtotal,
+        vat: widget.vat,
+      )),
+    );
   }
 
   static const _months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -676,6 +727,68 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final app = context.watch<AppState>();
     final s = Strings.of(app.lang);
 
+    return Stack(
+      children: [
+        _buildScaffold(s),
+        if (_confirmingCard) _buildConfirmingOverlay(),
+      ],
+    );
+  }
+
+  Widget _buildConfirmingOverlay() {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.5),
+        child: Center(
+          child: Container(
+            width: 340,
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 38),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(PwtRadius.lg),
+              boxShadow: const [BoxShadow(color: Color(0x140F1E50), blurRadius: 30, offset: Offset(0, 14))],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: const BoxDecoration(color: PwtColors.brandTint, shape: BoxShape.circle),
+                  child: const Center(
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(strokeWidth: 3, color: PwtColors.brand),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                ExcludeSemantics(
+                  child: Text(
+                    'Confirming Your Payment',
+                    textAlign: TextAlign.center,
+                    style: PwtType.title().copyWith(fontSize: 18, decoration: TextDecoration.none),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ExcludeSemantics(
+                  child: Text(
+                    "Please don't close or refresh this screen while we securely confirm your payment with Stripe.",
+                    textAlign: TextAlign.center,
+                    style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 12.5, height: 1.5, decoration: TextDecoration.none),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScaffold(Map<String, String> s) {
+    final app = context.watch<AppState>();
     return DetailScaffold(
       title: s['checkout'],
       body: Column(
@@ -1123,49 +1236,53 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
           ),
         ],
-        if (_cards.isEmpty || _enterNewCard) ...[
-          _cardInput('Card Number', _cardNumCtrl, TextInputType.number, '1234 5678 9012 3456',
-            formatters: [CardNumberFormatter()]),
+        if (_needsNewCard) ...[
+          Text('Card Details', style: PwtType.label(weight: FontWeight.w600).copyWith(fontSize: 13.5)),
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: PwtColors.surface,
+              borderRadius: BorderRadius.circular(PwtRadius.card),
+              border: Border.all(
+                color: _cardTouched && !_cardComplete ? PwtColors.error : PwtColors.hairline,
+                width: _cardTouched && !_cardComplete ? 1.5 : 1,
+              ),
+              boxShadow: PwtShadows.e1,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: stripe.CardField(
+              enablePostalCode: false,
+              style: PwtType.body(color: PwtColors.textPri).copyWith(fontSize: 14.5),
+              cursorColor: PwtColors.brand,
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(vertical: 13, horizontal: 8),
+              ),
+              onCardChanged: (details) => setState(() {
+                _cardComplete = details?.complete ?? false;
+                _cardTouched = true;
+              }),
+            ),
+          ),
+          if (_cardTouched && !_cardComplete) ...[
+            const SizedBox(height: 6),
+            Text('Enter your card details to continue.', style: PwtType.body(color: PwtColors.error).copyWith(fontSize: 12)),
+          ],
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: _cardInput('Month', _cardExpMonthCtrl, TextInputType.number, 'MM',
-                formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(2)])),
-              const SizedBox(width: 10),
-              Expanded(child: _cardInput('Year', _cardExpYearCtrl, TextInputType.number, 'YY',
-                formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(2)])),
-              const SizedBox(width: 10),
-              Expanded(child: _cardInput('CVC', _cardCvcCtrl, TextInputType.number, '123')),
+              const Icon(Icons.lock_outline, size: 14, color: PwtColors.textTer),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Your card details are securely encrypted by Stripe.',
+                  style: PwtType.caption().copyWith(fontSize: 11.5),
+                ),
+              ),
             ],
           ),
-          // const SizedBox(height: 10),
-          // _cardInput('Cardholder Name', _cardNameCtrl, TextInputType.name, 'Full name on card'),
         ],
-      ],
-    );
-  }
-
-  Widget _cardInput(String label, TextEditingController ctrl, TextInputType type, String hint, {List<TextInputFormatter>? formatters}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: PwtType.caption().copyWith(fontSize: 12, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 6),
-        PwtCard(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-          child: TextField(
-            controller: ctrl,
-            keyboardType: type,
-            inputFormatters: formatters,
-            style: PwtType.mono(size: 14),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: PwtType.mono(size: 14, color: PwtColors.textTer),
-              border: InputBorder.none,
-              isDense: true,
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -1258,12 +1375,25 @@ class _PaymentProcessingScreenState extends State<PaymentProcessingScreen> with 
   String? _error;
   static const _maxAttempts = 30; // 30 × 3 s = 90 s
 
+  bool get _useStripeSheet => (widget.payment.clientSecret ?? '').isNotEmpty;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _openPaymentUrl();
-    _startPolling();
+    debugPrint('[PaymentProcessing] useStripeSheet=$_useStripeSheet clientSecret=${_useStripeSheet ? "present" : "MISSING"} paymentUrl=${widget.payment.paymentUrl}');
+    if (_useStripeSheet) {
+      // Presenting the sheet synchronously from initState — before this
+      // screen has actually been laid out/attached — can make the native
+      // call silently no-op on some devices. Defer it to right after the
+      // first frame so the Activity is definitely resumed and attached.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _startStripePaymentSheet();
+      });
+    } else {
+      _openPaymentUrl();
+      _startPolling();
+    }
   }
 
   @override
@@ -1315,6 +1445,46 @@ class _PaymentProcessingScreenState extends State<PaymentProcessingScreen> with 
     }
   }
 
+  Future<void> _startStripePaymentSheet() async {
+    setState(() => _error = null);
+    try {
+      debugPrint('[StripePaymentSheet] initPaymentSheet…');
+      await stripe.Stripe.instance.initPaymentSheet(
+        paymentSheetParameters: stripe.SetupPaymentSheetParameters(
+          paymentIntentClientSecret: widget.payment.clientSecret!,
+          merchantDisplayName: 'Pure Water Technology',
+          // Temporarily disabled to isolate a generic, detail-less
+          // presentPaymentSheet() failure on a MIUI/Xiaomi device that may
+          // lack working Google Play Services — Stripe's SDK does a Google
+          // Pay availability check as part of sheet setup even if the user
+          // never taps the Google Pay button.
+          // googlePay: const stripe.PaymentSheetGooglePay(merchantCountryCode: 'AE', testEnv: true),
+        ),
+      );
+      if (!mounted) return;
+      debugPrint('[StripePaymentSheet] presentPaymentSheet…');
+      await stripe.Stripe.instance.presentPaymentSheet();
+      debugPrint('[StripePaymentSheet] presentPaymentSheet completed — payment confirmed.');
+      if (!mounted) return;
+      // ignore: use_build_context_synchronously
+      context.read<CartState>().clearBackend();
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => OrderSuccessScreen(order: widget.order, subtotal: widget.subtotal, vat: widget.vat)),
+      );
+    } on stripe.StripeException catch (e) {
+      debugPrint('[StripePaymentSheet] StripeException: code=${e.error.code} type=${e.error.type} stripeErrorCode=${e.error.stripeErrorCode} declineCode=${e.error.declineCode} message=${e.error.message} localized=${e.error.localizedMessage}');
+      if (!mounted) return;
+      final canceled = e.error.code == stripe.FailureCode.Canceled;
+      setState(() => _error = canceled ? 'Payment canceled.' : (e.error.localizedMessage ?? e.error.message ?? 'Payment failed. Please try again.'));
+    } catch (e) {
+      debugPrint('[StripePaymentSheet] error: $e');
+      if (!mounted) return;
+      setState(() => _error = 'Payment failed. Please try again.');
+    }
+  }
+
   Future<void> _poll() async {
     if (!mounted) return;
     _attempts++;
@@ -1360,20 +1530,31 @@ class _PaymentProcessingScreenState extends State<PaymentProcessingScreen> with 
                 const SizedBox(height: 20),
                 Text(_error!, style: theme.textTheme.bodyMedium?.copyWith(color: const Color(0xFFDC2626)), textAlign: TextAlign.center),
                 const SizedBox(height: 28),
-                PwtButton(label: 'Go Back', full: true, onPressed: () => Navigator.of(context).pop()),
+                if (_useStripeSheet) ...[
+                  PwtButton(label: 'Try Again', full: true, onPressed: _startStripePaymentSheet),
+                  const SizedBox(height: 12),
+                ],
+                PwtButton(
+                  label: 'Go Back',
+                  full: true,
+                  variant: _useStripeSheet ? PwtButtonVariant.ghost : PwtButtonVariant.primary,
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
               ] else ...[
                 const CircularProgressIndicator(),
                 const SizedBox(height: 28),
                 Text('Processing Payment…', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold), textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 Text(
-                  widget.payment.paymentUrl != null && widget.payment.paymentUrl!.isNotEmpty
-                      ? 'Complete your payment in the browser that just opened.\nDo not close this screen.'
-                      : 'Please wait while we confirm your payment.\nDo not close this screen.',
+                  _useStripeSheet
+                      ? 'Please wait while we confirm your payment.\nDo not close this screen.'
+                      : (widget.payment.paymentUrl != null && widget.payment.paymentUrl!.isNotEmpty
+                          ? 'Complete your payment in the browser that just opened.\nDo not close this screen.'
+                          : 'Please wait while we confirm your payment.\nDo not close this screen.'),
                   style: theme.textTheme.bodyMedium,
                   textAlign: TextAlign.center,
                 ),
-                if (widget.payment.paymentUrl != null && widget.payment.paymentUrl!.isNotEmpty) ...[
+                if (!_useStripeSheet && widget.payment.paymentUrl != null && widget.payment.paymentUrl!.isNotEmpty) ...[
                   const SizedBox(height: 20),
                   TextButton(
                     onPressed: _openPaymentUrl,

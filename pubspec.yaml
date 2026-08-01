@@ -43,6 +43,8 @@ dependencies:
 
   flutter_libphonenumber: ^2.7.0
 
+  flutter_stripe: ^11.5.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

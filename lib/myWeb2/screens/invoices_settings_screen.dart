@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../widgets/common.dart';
 import '../widgets/dashboard_widgets.dart';
 import 'dashboard_shell.dart';
+import '../../Backend/Users/update_user.dart';
 
 class InvoicesScreen extends StatelessWidget {
   const InvoicesScreen({super.key});
@@ -59,6 +60,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _notif = {'maint': true, 'billing': true, 'orders': true, 'offers': false};
   bool _twoFa = false;
 
+  final _curPwCtrl = TextEditingController();
+  final _newPwCtrl = TextEditingController();
+  final _confPwCtrl = TextEditingController();
+  bool _savingPassword = false;
+  String? _passwordError;
+
+  @override
+  void dispose() {
+    _curPwCtrl.dispose();
+    _newPwCtrl.dispose();
+    _confPwCtrl.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.of(context).size.width > 880;
@@ -67,36 +82,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const DashHeader(title: 'Settings', subtitle: 'Notifications, preferences and account security'),
         Flex(direction: wide ? Axis.horizontal : Axis.vertical, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(flex: wide ? 1 : 0, child: Column(children: [
-            DashCard(title: 'Notifications', child: Column(children: [
-              _switchRow('Maintenance reminders', 'Service due dates and scheduled visits', 'maint'),
-              _switchRow('Billing & payments', 'Upcoming rental payments and receipts', 'billing'),
-              _switchRow('Order updates', 'Delivery and installation status', 'orders'),
-              _switchRow('Offers & news', 'Occasional product news and promotions', 'offers'),
-            ])),
-            const SizedBox(height: 16),
-            DashCard(title: 'Preferences', child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Expanded(child: _langSelect()),
-                const SizedBox(width: 12),
-                Expanded(child: _select('Currency', const ['GBP (£)', 'EUR (€)', 'USD (\$)'])),
-              ]),
-              const SizedBox(height: 16),
-              PwtButton('Save Preferences', onPressed: () => _toast('Preferences saved')),
-            ])),
-          ])),
-          SizedBox(width: wide ? 18 : 0, height: wide ? 0 : 16),
+          // Hidden for now — will return later.
+          // Expanded(flex: wide ? 1 : 0, child: Column(children: [
+          //   DashCard(title: 'Notifications', child: Column(children: [
+          //     _switchRow('Maintenance reminders', 'Service due dates and scheduled visits', 'maint'),
+          //     _switchRow('Billing & payments', 'Upcoming rental payments and receipts', 'billing'),
+          //     _switchRow('Order updates', 'Delivery and installation status', 'orders'),
+          //     _switchRow('Offers & news', 'Occasional product news and promotions', 'offers'),
+          //   ])),
+          //   const SizedBox(height: 16),
+          //   DashCard(title: 'Preferences', child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          //     Row(children: [
+          //       Expanded(child: _langSelect()),
+          //       const SizedBox(width: 12),
+          //       Expanded(child: _select('Currency', const ['GBP (£)', 'EUR (€)', 'USD (\$)'])),
+          //     ]),
+          //     const SizedBox(height: 16),
+          //     PwtButton('Save Preferences', onPressed: () => _toast('Preferences saved')),
+          //   ])),
+          // ])),
+          // SizedBox(width: wide ? 18 : 0, height: wide ? 0 : 16),
           Expanded(flex: wide ? 1 : 0, child: DashCard(title: 'Security', child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _passField('Current password'),
+            _passField('Current password', _curPwCtrl),
             const SizedBox(height: 12),
-            Row(children: [Expanded(child: _passField('New password')), const SizedBox(width: 12), Expanded(child: _passField('Confirm new password'))]),
+            Row(children: [Expanded(child: _passField('New password', _newPwCtrl)), const SizedBox(width: 12), Expanded(child: _passField('Confirm new password', _confPwCtrl))]),
+            if (_passwordError != null) ...[
+              const SizedBox(height: 8),
+              Text(_passwordError!, style: AppText.muted.copyWith(color: AppColors.danger)),
+            ],
             const SizedBox(height: 16),
-            PwtButton('Update Password', onPressed: () => _toast('Password updated')),
-            const Padding(padding: EdgeInsets.symmetric(vertical: 18), child: Divider(height: 1, color: AppColors.line)),
-            Row(children: [
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Two-factor authentication', style: AppText.label), const SizedBox(height: 2), Text('Add an extra layer of security at sign-in', style: AppText.muted)])),
-              PwtToggle(value: _twoFa, onChanged: (v) => setState(() => _twoFa = v)),
-            ]),
+            PwtButton(_savingPassword ? 'Updating…' : 'Update Password', onPressed: _savingPassword ? null : _changePassword),
+            // Hidden for now — will return later.
+            // const Padding(padding: EdgeInsets.symmetric(vertical: 18), child: Divider(height: 1, color: AppColors.line)),
+            // Row(children: [
+            //   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Two-factor authentication', style: AppText.label), const SizedBox(height: 2), Text('Add an extra layer of security at sign-in', style: AppText.muted)])),
+            //   PwtToggle(value: _twoFa, onChanged: (v) => setState(() => _twoFa = v)),
+            // ]),
           ]))),
         ]),
       ]),
@@ -143,9 +164,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ]);
 
-  Widget _passField(String label) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+  Widget _passField(String label, TextEditingController controller) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, style: AppText.label),
         const SizedBox(height: 7),
-        const TextField(obscureText: true, decoration: InputDecoration(hintText: '••••••••')),
+        TextField(
+          controller: controller,
+          obscureText: true,
+          autofillHints: null,
+          enableSuggestions: false,
+          autocorrect: false,
+          decoration: const InputDecoration(hintText: '••••••••'),
+        ),
       ]);
+
+  Future<void> _changePassword() async {
+    final current = _curPwCtrl.text;
+    final next = _newPwCtrl.text;
+    final confirm = _confPwCtrl.text;
+
+    if (current.isEmpty || next.isEmpty || confirm.isEmpty) {
+      setState(() => _passwordError = 'Please fill in all three password fields.');
+      return;
+    }
+    if (next != confirm) {
+      setState(() => _passwordError = 'New password and confirmation do not match.');
+      return;
+    }
+
+    setState(() { _savingPassword = true; _passwordError = null; });
+    final res = await updateProfile(
+      currentPassword: current,
+      password: next,
+      passwordConfirmation: confirm,
+    );
+    if (!mounted) return;
+    setState(() => _savingPassword = false);
+
+    if (res.success) {
+      await AppState.instance.updateCurrentPassword(next);
+      _curPwCtrl.clear();
+      _newPwCtrl.clear();
+      _confPwCtrl.clear();
+      _toast('Password updated.');
+    } else {
+      setState(() => _passwordError = res.message ?? res.error ?? 'Failed to update password. Please try again.');
+    }
+  }
 }

@@ -206,6 +206,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Keeps the cached password (used to re-authenticate other profile edits)
+  /// in sync after the user successfully changes their password.
+  Future<void> updateCurrentPassword(String password) async {
+    currentPassword = password;
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kPassword, password);
+  }
+
   Future<void> signOut() async {
     cart.clear();
     user = null;

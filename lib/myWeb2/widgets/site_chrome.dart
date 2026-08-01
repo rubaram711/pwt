@@ -71,8 +71,9 @@ class SiteHeader extends StatelessWidget implements PreferredSizeWidget {
           child: Align(
             alignment: Alignment.centerRight,
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const LangSwitcher(),
-              const SizedBox(width: 16),
+              // Hidden for now — will return later.
+              // const LangSwitcher(),
+              // const SizedBox(width: 16),
               if (!(AppState.instance.user?.isCompany ?? false))
                 Stack(clipBehavior: Clip.none, children: [
                   _icon(context, Icons.shopping_cart_outlined, '/cart'),

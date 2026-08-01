@@ -22,6 +22,7 @@ class PwtField extends StatefulWidget {
     this.forceLtr = false,
     this.readOnly = false,
     this.inputFormatters,
+    this.autofillHints,
   });
 
   final String label;
@@ -36,6 +37,10 @@ class PwtField extends StatefulWidget {
   final bool forceLtr;
   final bool readOnly;
   final List<TextInputFormatter>? inputFormatters;
+  /// Pass `const []` to opt this field out of platform/browser autofill
+  /// suggestions (e.g. so password-change fields never get pre-filled with a
+  /// saved credential). Leave null for default autofill behaviour.
+  final Iterable<String>? autofillHints;
 
   @override
   State<PwtField> createState() => _PwtFieldState();
@@ -100,6 +105,7 @@ class _PwtFieldState extends State<PwtField> {
                   readOnly: widget.readOnly,
                   textDirection: widget.forceLtr ? TextDirection.ltr : null,
                   inputFormatters: widget.inputFormatters,
+                  autofillHints: widget.autofillHints,
                   style: PwtType.body(weight: FontWeight.w500),
                   decoration: const InputDecoration(
                     isDense: true,

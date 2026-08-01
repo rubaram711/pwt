@@ -113,8 +113,9 @@ class _DashHeader extends StatelessWidget implements PreferredSizeWidget {
                     ]))
               else
                 const Spacer(),
-              const LangSwitcher(),
-              const SizedBox(width: 18),
+              // Hidden for now — will return later.
+              // const LangSwitcher(),
+              // const SizedBox(width: 18),
               _cartIcon(context),
               const SizedBox(width: 16),
               AccountAction(dashboardCompany: isCompany),

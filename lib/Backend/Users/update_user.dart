@@ -14,6 +14,8 @@ Future<ApiResponse<User>> updateProfile({
   String? phoneCountryCode,
   String? companyName,
   String? currentPassword,
+  String? password,
+  String? passwordConfirmation,
   String? locale,
 }) async {
 
@@ -26,6 +28,8 @@ Future<ApiResponse<User>> updateProfile({
     if (phone != null && phone.isNotEmpty && phoneCountryCode != null) "phone_country_code": phoneCountryCode,
     if (companyName != null) "company_name": companyName,
     if (currentPassword != null) "current_password": currentPassword,
+    if (password != null) "password": password,
+    if (passwordConfirmation != null) "password_confirmation": passwordConfirmation,
     if (locale != null) "locale": locale,
   };
 

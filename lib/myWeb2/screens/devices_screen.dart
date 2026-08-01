@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import '../theme/tokens.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
+import '../widgets/empty_states.dart';
 import '../state/app_state.dart';
 import 'dashboard_shell.dart';
 import '../../Models/Machines/machines_model.dart';
 import '../../Models/Machines/machine_detail_model.dart';
 import '../../Models/Pagination/pagination_model.dart';
+import '../../Models/Products/products_model.dart';
 import '../../Backend/Machines/get_machines.dart';
 import '../../Backend/Machines/get_machine_details.dart';
+import '../../Backend/Products/get_products.dart';
 
 String _fmt(String? iso) {
   if (iso == null) return '—';
@@ -38,6 +41,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
   PaginationModel? _pagination;
   int _page = 1;
   final _pageCache = <String, List<MachineModel>>{};
+  List<ProductModel> _teaserProducts = [];
 
   @override
   void initState() {
@@ -62,8 +66,17 @@ class _DevicesScreenState extends State<DevicesScreen> {
         _pagination = res.data!.pagination;
         _page = page;
       });
+      if (res.data!.items.isEmpty) _loadTeasers();
     } else {
       setState(() { _loading = false; _error = res.message ?? 'Failed to load machines.'; });
+    }
+  }
+
+  Future<void> _loadTeasers() async {
+    final res = await getProducts(page: 1);
+    if (!mounted) return;
+    if (res.success && res.data != null) {
+      setState(() => _teaserProducts = res.data!.items.take(3).toList());
     }
   }
 
@@ -82,18 +95,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
         else if (_error != null)
           DashCard(child: Text(_error!, style: AppText.muted.copyWith(color: AppColors.danger)))
         else if (_machines.isEmpty)
-          DashCard(child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 28),
-            child: Center(child: Column(children: [
-              Container(width: 60, height: 60, decoration: BoxDecoration(color: AppColors.soft, shape: BoxShape.circle), child: const Icon(Icons.water_drop_outlined, size: 28, color: AppColors.ink400)),
-              const SizedBox(height: 14),
-              Text('No machines found', style: AppText.h2.copyWith(fontSize: 18)),
-              const SizedBox(height: 6),
-              Text('Your installed water systems will appear here.', style: AppText.muted),
-              const SizedBox(height: 18),
-              PwtButton('Shop new machine', icon: Icons.add, onPressed: () => Navigator.of(context).pushNamed('/shop')),
-            ])),
-          ))
+          DashCard(child: SizedBox(width: double.infinity, child: Center(child: DevicesEmptyState(business: false, onBrowse: () => Navigator.of(context).pushNamed('/shop'), teaserProducts: _teaserProducts))))
         else
           LayoutBuilder(builder: (context, c) {
             final cols = c.maxWidth > 720 ? 2 : 1;

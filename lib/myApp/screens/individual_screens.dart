@@ -15,6 +15,8 @@ import '../state/app_state.dart';
 import '../state/cart_state.dart';
 import '../widgets/chrome.dart';
 import '../widgets/primitives.dart';
+import '../widgets/empty_states.dart';
+import '../widgets/floating_trial_badge.dart';
 import '../widgets/pwt_icons.dart';
 import 'account_screens.dart';
 import 'business_screens.dart' show RequestRfqScreen;
@@ -144,7 +146,7 @@ class _IndividualShellState extends State<IndividualShell> {
 
   Widget _devicesTab() {
     if (_loadingMachines) {
-      return _BrandBackdrop(child: Column(children: [
+      return BrandBackdrop(child: Column(children: [
         AppHeader(user: _user, onProfile: _onProfileTap),
         const Expanded(child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: PwtColors.brand))),
       ]));
@@ -212,6 +214,7 @@ class _IndividualShellState extends State<IndividualShell> {
                 key: _ordersKey,
                 user: _user,
                 onProfile: _onProfileTap,
+                onBrowse: () => setState(() => _tab = 'products'),
               ),
           ],
         ),
@@ -254,7 +257,7 @@ class _HomeTab extends StatelessWidget {
     final ar = app.isArabic;
     final firstName = user.name.trim().isNotEmpty ? user.name.trim().split(' ').first : '';
 
-    return _BrandBackdrop(
+    return BrandBackdrop(
       opacity: 0.1,
       child: ListView(
         padding: EdgeInsets.zero,
@@ -299,16 +302,23 @@ class _HomeTab extends StatelessWidget {
                 // Text(s['homeHeroSub']!, style: PwtType.body(color: PwtColors.textSec, arabic: ar).copyWith(fontSize: 13.5, height: 1.55)),
 
                 const SizedBox(height: 18),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: Image.asset(
-                    'assets/images/podium-hero.png',
-                    height: 210,
-                    width: double.infinity,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const SizedBox(height: 210),
+                Stack(clipBehavior: Clip.none, children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.asset(
+                      'assets/images/podium-hero.png',
+                      height: 210,
+                      width: double.infinity,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const SizedBox(height: 210),
+                    ),
                   ),
-                ),
+                  const Positioned(
+                    top: -10,
+                    right: -6,
+                    child: FloatingTrialBadge(),
+                  ),
+                ]),
                 const SizedBox(height: 16),
                 PwtButton(label: s['exploreProducts']!, trailing: PwtIcons.arrow, onPressed: onExplore),
               ],
@@ -511,8 +521,8 @@ class _SolutionCard extends StatelessWidget {
   }
 }
 
-class _BrandBackdrop extends StatelessWidget {
-  const _BrandBackdrop({this.opacity = 0.18, required this.child});
+class BrandBackdrop extends StatelessWidget {
+  const BrandBackdrop({super.key, this.opacity = 0.18, required this.child});
   final double opacity;
   final Widget child;
   @override
@@ -579,7 +589,7 @@ class _IndividualHomeState extends State<IndividualHome> {
     final machine = widget.machines[_idx];
     final isOrdered = machine.status == 'ordered';
 
-    return _BrandBackdrop(
+    return BrandBackdrop(
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
@@ -1031,7 +1041,7 @@ class ProductsScreenState extends State<ProductsScreen> {
     final s = Strings.of(app.lang);
     final ar = app.isArabic;
 
-    return _BrandBackdrop(
+    return BrandBackdrop(
       opacity: 0.08,
       child: ListView(
         padding: EdgeInsets.zero,
@@ -1337,20 +1347,41 @@ class _ProductCard extends StatelessWidget {
 }
 
 // ─── Empty devices state (first-time signup) ───
-class _DevicesEmpty extends StatelessWidget {
+class _DevicesEmpty extends StatefulWidget {
   const _DevicesEmpty({required this.user, required this.onProfile, required this.onBrowse});
   final AppUser user;
   final VoidCallback onProfile;
   final VoidCallback onBrowse;
 
   @override
+  State<_DevicesEmpty> createState() => _DevicesEmptyState();
+}
+
+class _DevicesEmptyState extends State<_DevicesEmpty> {
+  List<ProductModel> _teaserProducts = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTeasers();
+  }
+
+  Future<void> _loadTeasers() async {
+    final res = await getProducts(page: 1);
+    if (!mounted) return;
+    if (res.success && res.data != null) {
+      setState(() => _teaserProducts = res.data!.items.take(3).toList());
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final s = Strings.of(app.lang);
-    return _BrandBackdrop(
+    return BrandBackdrop(
       child: ListView(
         children: [
-          AppHeader(user: user, onProfile: onProfile),
+          AppHeader(user: widget.user, onProfile: widget.onProfile),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
             child: Column(
@@ -1358,31 +1389,11 @@ class _DevicesEmpty extends StatelessWidget {
               children: [
                 Eyebrow(s['welcomeBack']!),
                 const SizedBox(height: 4),
-                Text('${user.name.split(' ').first} 👋', style: PwtType.headline().copyWith(fontSize: 24)),
+                Text('${widget.user.name.split(' ').first} 👋', style: PwtType.headline().copyWith(fontSize: 24)),
               ],
             ),
           ),
-          const SizedBox(height: 40),
-          Center(
-            child: Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(color: PwtColors.brandTint, shape: BoxShape.circle),
-              child: const Icon(PwtIcons.drop, size: 32, color: PwtColors.brand),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Center(child: Text(s['noDevicesYet']!, style: PwtType.title().copyWith(fontSize: 20))),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 48),
-            child: Text(s['noDevicesSub']!, textAlign: TextAlign.center, style: PwtType.body(color: PwtColors.textSec)),
-          ),
-          const SizedBox(height: 24),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 48),
-            child: PwtButton(label: s['browseProducts']!, full: true, icon: PwtIcons.cube, onPressed: onBrowse),
-          ),
+          DevicesEmptyState(business: false, onBrowse: widget.onBrowse, teaserProducts: _teaserProducts),
         ],
       ),
     );
@@ -1399,7 +1410,7 @@ class _DevicesError extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = Strings.of(context.watch<AppState>().lang);
-    return _BrandBackdrop(
+    return BrandBackdrop(
       child: ListView(
         children: [
           AppHeader(user: user, onProfile: onProfile),
@@ -1670,9 +1681,10 @@ class _IndividualRequestsScreenState extends State<IndividualRequestsScreen> {
 
 // ─── Orders tab ───
 class IndividualOrdersScreen extends StatefulWidget {
-  const IndividualOrdersScreen({super.key, required this.user, required this.onProfile});
+  const IndividualOrdersScreen({super.key, required this.user, required this.onProfile, this.onBrowse});
   final AppUser user;
   final VoidCallback onProfile;
+  final VoidCallback? onBrowse;
 
   @override
   State<IndividualOrdersScreen> createState() => _IndividualOrdersScreenState();
@@ -1761,6 +1773,10 @@ class _IndividualOrdersScreenState extends State<IndividualOrdersScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final s = Strings.of(app.lang);
+    // Hide the sort toggle and status filter chips for the true empty state
+    // (no data, no active filter, no error) — the empty-state design reads
+    // cleaner without controls that have nothing to act on.
+    final trueEmpty = !_loading && _orders.isEmpty && _errorMsg == null && _statusFilter == null;
     return ListView(
       padding: EdgeInsets.zero,
       children: [
@@ -1776,6 +1792,7 @@ class _IndividualOrdersScreenState extends State<IndividualOrdersScreen> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Expanded(child: Text(s['orders']!, style: PwtType.headline().copyWith(fontSize: 28))),
+                  if (!trueEmpty)
                   GestureDetector(
                     onTap: () { setState(() { _sortDesc = !_sortDesc; _page = 1; }); _load(); },
                     child: Container(
@@ -1791,31 +1808,33 @@ class _IndividualOrdersScreenState extends State<IndividualOrdersScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: List.generate(_statusFilters.length, (i) {
-                    final on = _statusFilter == _statusFilters[i];
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() { _statusFilter = _statusFilters[i]; _page = 1; });
-                        _load();
-                      },
-                      child: Container(
-                        margin: EdgeInsets.only(right: i < _statusFilters.length - 1 ? 8 : 0),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: on ? PwtColors.brandTint : PwtColors.surface,
-                          border: Border.all(color: on ? PwtColors.brand : PwtColors.hairline, width: on ? 1.5 : 1),
-                          borderRadius: BorderRadius.circular(999),
+              if (!trueEmpty) ...[
+                const SizedBox(height: 14),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: List.generate(_statusFilters.length, (i) {
+                      final on = _statusFilter == _statusFilters[i];
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() { _statusFilter = _statusFilters[i]; _page = 1; });
+                          _load();
+                        },
+                        child: Container(
+                          margin: EdgeInsets.only(right: i < _statusFilters.length - 1 ? 8 : 0),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: on ? PwtColors.brandTint : PwtColors.surface,
+                            border: Border.all(color: on ? PwtColors.brand : PwtColors.hairline, width: on ? 1.5 : 1),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(_statusFilterLabels[i], style: PwtType.label(weight: on ? FontWeight.w700 : FontWeight.w500, color: on ? PwtColors.brand : PwtColors.textSec).copyWith(fontSize: 13)),
                         ),
-                        child: Text(_statusFilterLabels[i], style: PwtType.label(weight: on ? FontWeight.w700 : FontWeight.w500, color: on ? PwtColors.brand : PwtColors.textSec).copyWith(fontSize: 13)),
-                      ),
-                    );
-                  }),
+                      );
+                    }),
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -1824,6 +1843,8 @@ class _IndividualOrdersScreenState extends State<IndividualOrdersScreen> {
             padding: EdgeInsets.symmetric(vertical: 60),
             child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: PwtColors.brand)),
           )
+        else if (trueEmpty)
+          OrdersEmptyState(onBrowse: widget.onBrowse ?? () {})
         else if (_orders.isEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(30, 40, 30, 24),
@@ -1841,12 +1862,12 @@ class _IndividualOrdersScreenState extends State<IndividualOrdersScreen> {
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  _errorMsg != null ? s['ordersLoadError']! : (_statusFilter == null ? s['noOrdersYet']! : s['noOrdersFiltered']!),
+                  _errorMsg != null ? s['ordersLoadError']! : s['noOrdersFiltered']!,
                   style: PwtType.title().copyWith(fontSize: 20),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _errorMsg != null ? s['ordersLoadErrorSub']! : (_statusFilter == null ? s['noOrdersSub']! : s['noOrdersFilteredSub']!),
+                  _errorMsg != null ? s['ordersLoadErrorSub']! : s['noOrdersFilteredSub']!,
                   textAlign: TextAlign.center,
                   style: PwtType.body(color: PwtColors.textSec).copyWith(fontSize: 13.5),
                 ),

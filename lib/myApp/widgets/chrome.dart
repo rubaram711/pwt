@@ -48,12 +48,13 @@ class AppHeader extends StatelessWidget {
           ),
           if (extra != null) extra!,
           const SizedBox(width: 10),
-          _CircleButton(
-            icon: PwtIcons.bell,
-            onTap: onBell,
-            badge: true,
-          ),
-          const SizedBox(width: 10),
+          // Hidden for now — will return later.
+          // _CircleButton(
+          //   icon: PwtIcons.bell,
+          //   onTap: onBell,
+          //   badge: true,
+          // ),
+          // const SizedBox(width: 10),
           GestureDetector(
             onTap: onProfile,
             child: Container(
@@ -379,32 +380,34 @@ class ProfileDrawer extends StatelessWidget {
           const SizedBox(height: 8),
           _DrawerItem(icon: PwtIcons.user, label: s['profile']!, onTap: () => onSelect('profile')),
           _DrawerItem(icon: PwtIcons.bell, label: s['settings']!, onTap: () => onSelect('settings')),
-          _DrawerItem(icon: PwtIcons.file, label: s['invoices']!, onTap: () => onSelect('invoices')),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: Divider(height: 1, color: PwtColors.hairline),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 10),
-                  child: Text(s['preferences']!.toUpperCase(), style: PwtType.eyebrow().copyWith(fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 1.3)),
-                ),
-                SegmentRow<String>(
-                  label: s['language'],
-                  value: app.lang,
-                  options: const [
-                    SegmentOption(value: 'en', label: 'EN'),
-                    SegmentOption(value: 'ar', label: 'AR'),
-                  ],
-                  onChanged: app.setLang,
-                ),
-              ],
-            ),
-          ),
+          // Hidden for now — will return later.
+          // _DrawerItem(icon: PwtIcons.file, label: s['invoices']!, onTap: () => onSelect('invoices')),
+          // Hidden for now — will return later.
+          // const Padding(
+          //   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          //   child: Divider(height: 1, color: PwtColors.hairline),
+          // ),
+          // Padding(
+          //   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          //   child: Column(
+          //     crossAxisAlignment: CrossAxisAlignment.start,
+          //     children: [
+          //       Padding(
+          //         padding: const EdgeInsets.fromLTRB(4, 8, 4, 10),
+          //         child: Text(s['preferences']!.toUpperCase(), style: PwtType.eyebrow().copyWith(fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 1.3)),
+          //       ),
+          //       SegmentRow<String>(
+          //         label: s['language'],
+          //         value: app.lang,
+          //         options: const [
+          //           SegmentOption(value: 'en', label: 'EN'),
+          //           SegmentOption(value: 'ar', label: 'AR'),
+          //         ],
+          //         onChanged: app.setLang,
+          //       ),
+          //     ],
+          //   ),
+          // ),
           const Spacer(),
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 28),

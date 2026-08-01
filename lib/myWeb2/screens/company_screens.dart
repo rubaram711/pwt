@@ -3,6 +3,7 @@ import '../theme/tokens.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import '../widgets/dashboard_widgets.dart';
+import '../widgets/empty_states.dart';
 import 'dashboard_shell.dart';
 import '../../Models/Machines/machines_model.dart';
 import '../../Models/Pagination/pagination_model.dart';
@@ -96,6 +97,8 @@ class _CompanyDevicesScreenState extends State<CompanyDevicesScreen> {
               const Padding(padding: EdgeInsets.symmetric(vertical: 32), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
             else if (_error != null)
               Text(_error!, style: AppText.muted.copyWith(color: AppColors.danger))
+            else if (_machines.isEmpty && _currentStatus == null)
+              SizedBox(width: double.infinity, child: Center(child: DevicesEmptyState(business: true, onBrowse: () => Navigator.of(context).pushNamed('/rfq'))))
             else if (_machines.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),

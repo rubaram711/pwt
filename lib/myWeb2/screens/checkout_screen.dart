@@ -2,13 +2,14 @@ import 'dart:async';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import '../utils/card_formatters.dart';
 import '../theme/tokens.dart';
 import '../theme/app_theme.dart';
 import '../state/app_state.dart';
 import '../widgets/common.dart';
 import '../widgets/site_chrome.dart';
+import '../widgets/stripe_card_field.dart';
+import '../utils/stripe_web.dart';
+import '../../const/stripe_config.dart';
 import '../../Backend/Orders/place_order.dart';
 import '../../Backend/Payments/initiate_payment.dart';
 import '../../Backend/Payments/get_payment_status.dart';
@@ -59,16 +60,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? _cardsLoadError;
   int? _selectedCardId;
   bool _enterNewCard = false;
-  final _cardNumber = TextEditingController();
-  final _cardMonth  = TextEditingController();
-  final _cardYear   = TextEditingController();
-  final _cardCvc    = TextEditingController();
+
+  // Embedded Stripe card element (web equivalent of myApp's native
+  // PaymentSheet) — kept alive via GlobalKey across step changes so it
+  // survives moving from the Payment step to the Review step. See
+  // _needsStripeField / _persistentStripeField.
+  final _stripeCardKey = GlobalKey<StripeCardFieldsState>();
+  bool _stripeCardComplete = false;
+  String? _stripeCardError;
+  bool _stripeCardTouched = false;
+  bool _confirmingCard = false;
 
   bool _placing = false;
   String? _placeError;
   Map<String, String?> _errors = {};
 
-  // Payment processing (step 6)
+  // Payment processing (step 6) — used for the saved-card / Apple Pay /
+  // Google Pay fallback path only. New-card payments are confirmed inline
+  // via Stripe's Card Element and never reach this step.
   PaymentModel? _payment;
   OrderDetailModel? _pendingOrder;
   String? _payError;
@@ -124,10 +133,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _name.dispose();
     _email.dispose();
     _phone.dispose();
-    _cardNumber.dispose();
-    _cardMonth.dispose();
-    _cardYear.dispose();
-    _cardCvc.dispose();
     super.dispose();
   }
 
@@ -247,17 +252,76 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _modeInit = true;
     }
     final wide = MediaQuery.of(context).size.width > 900;
-    return StoreScaffold(active: '/cart', showFooter: false, slivers: [
+    final content = StoreScaffold(active: '/cart', showFooter: false, slivers: [
       SliverToBoxAdapter(
         child: Band(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           _stepper(),
           const SizedBox(height: 24),
           Flex(direction: wide ? Axis.horizontal : Axis.vertical, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(flex: wide ? 3 : 0, child: _panel()),
+            Expanded(flex: wide ? 3 : 0, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _panel(),
+              // Keeps the mounted Stripe Card Element (and its DOM iframe)
+              // alive via GlobalKey while the user moves from the Payment
+              // step to the Review step, so it's still there to confirm
+              // against when they place the order.
+              if (_step != 4 && _needsStripeField)
+                Offstage(offstage: true, child: SizedBox(width: 0, height: 0, child: _persistentStripeField())),
+            ])),
             SizedBox(width: wide ? 22 : 0, height: wide ? 0 : 22),
             Expanded(flex: wide ? 2 : 0, child: _summary()),
           ]),
         ])),
+      ),
+    ]);
+
+    if (!_confirmingCard) return content;
+    return Stack(children: [
+      content,
+      Positioned.fill(
+        child: Container(
+          color: Colors.black.withOpacity(0.5),
+          child: Center(
+            child: Container(
+              width: 340,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 38),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                boxShadow: AppShadow.lg,
+              ),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: const BoxDecoration(color: AppColors.blue50, shape: BoxShape.circle),
+                  child: const Center(
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(strokeWidth: 3, color: AppColors.blue700),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                ExcludeSemantics(
+                  child: Text(
+                    'Confirming Your Payment',
+                    textAlign: TextAlign.center,
+                    style: AppText.h3.copyWith(fontSize: 18, decoration: TextDecoration.none),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ExcludeSemantics(
+                  child: Text(
+                    'Please don\'t close or refresh this page while we securely confirm your payment with Stripe.',
+                    textAlign: TextAlign.center,
+                    style: AppText.muted.copyWith(height: 1.5, decoration: TextDecoration.none),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ),
       ),
     ]);
   }
@@ -399,31 +463,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (_pay != 0) return true;
     // Saved card selected
     if (_selectedCardId != null && !_enterNewCard) return true;
-    // New card: validate fields
-    final e = <String, String?>{};
-    final digits = _cardNumber.text.replaceAll(' ', '');
-    if (digits.isEmpty) {
-      e['cardNumber'] = 'Card number is required';
-    } else if (digits.length != 16) {
-      e['cardNumber'] = 'Enter a valid 16-digit card number';
+    // New card: Stripe's Card Element validates itself live via onChange.
+    if (!_stripeCardComplete) {
+      setState(() => _stripeCardTouched = true);
+      return false;
     }
-    final month = _cardMonth.text.trim();
-    if (month.isEmpty) {
-      e['cardMonth'] = 'Required';
-    } else {
-      final m = int.tryParse(month);
-      if (m == null || m < 1 || m > 12) e['cardMonth'] = 'Enter 01–12';
-    }
-    final year = _cardYear.text.trim();
-    if (year.isEmpty) {
-      e['cardYear'] = 'Required';
-    } else if (year.length != 2) {
-      e['cardYear'] = '2-digit year (e.g. 26)';
-    }
-    if (_cardCvc.text.trim().isEmpty) e['cardCvc'] = 'CVC is required';
-    setState(() => _errors = e);
-    return e.isEmpty;
+    return true;
   }
+
+  bool get _needsStripeField => _pay == 0 && (_cardsLoadError != null || _cards.isEmpty || _enterNewCard);
+
+  Widget _persistentStripeField() => StripeCardFields(
+        key: _stripeCardKey,
+        publishableKey: kStripePublishableKey,
+        onChange: (complete, error) => setState(() {
+          _stripeCardComplete = complete;
+          _stripeCardError = error;
+        }),
+      );
 
   // ── Step 2: Information ──────────────────────────────────────
 
@@ -746,23 +803,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ]),
                 ),
               ),
-            Text('Card Number', style: AppText.label),
+            Text('Card Details', style: AppText.label),
             const SizedBox(height: 7),
-            TextField(
-              controller: _cardNumber,
-              keyboardType: TextInputType.number,
-              inputFormatters: [CardNumberFormatter()],
-              decoration: InputDecoration(hintText: '1234 1234 1234 1234', errorText: _errors['cardNumber']),
-              onChanged: (_) => setState(() => _errors.remove('cardNumber')),
-            ),
-            const SizedBox(height: 10),
-            Row(children: [
-              Expanded(child: _cardSubField('Month', _cardMonth, 'MM', 'cardMonth', maxLen: 2)),
-              const SizedBox(width: 10),
-              Expanded(child: _cardSubField('Year', _cardYear, 'YY', 'cardYear', maxLen: 2)),
-              const SizedBox(width: 10),
-              Expanded(child: _cardSubField('CVC', _cardCvc, '123', 'cardCvc', maxLen: 4)),
-            ]),
+            _persistentStripeField(),
+            if (_stripeCardError != null) ...[
+              const SizedBox(height: 6),
+              Text(_stripeCardError!, style: AppText.muted.copyWith(color: AppColors.danger, fontSize: 12)),
+            ] else if (_stripeCardTouched && !_stripeCardComplete) ...[
+              const SizedBox(height: 6),
+              Text('Enter your card details to continue.', style: AppText.muted.copyWith(color: AppColors.danger, fontSize: 12)),
+            ],
           ],
         ],
       ]),
@@ -824,9 +874,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final card = _cards.where((c) => c.id == _selectedCardId).firstOrNull;
       paymentText = card != null ? '${card.brand ?? 'Card'} •••• ${card.lastFour ?? ''}' : 'Saved Card';
     } else {
-      final digits = _cardNumber.text.replaceAll(' ', '');
-      final last4 = digits.length >= 4 ? digits.substring(digits.length - 4) : digits;
-      paymentText = last4.isNotEmpty ? 'Card •••• $last4' : 'Credit / Debit Card';
+      paymentText = 'Credit / Debit Card';
     }
 
     return Column(children: [
@@ -867,12 +915,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final phone = '$_countryCode${_phone.text.trim()}';
     final dateStr = _deliveryDate != null ? _dateStr(_deliveryDate!) : null;
 
-    // Build card fields when paying by card
+    // A new card is captured entirely by Stripe's embedded Card Element —
+    // its real digits never touch our backend. /orders still requires
+    // card_number/card_expiry to be present for payment_method=card, so we
+    // send inert placeholders here; the actual charge is authorized purely
+    // via Stripe's client_secret + confirmCardPayment below, never from
+    // these fields.
+    final usingSavedCard = _pay == 0 && !_enterNewCard && _selectedCardId != null;
     String? cardNumber;
     String? cardExpiry;
     String? cardCvc;
     if (_pay == 0) {
-      if (!_enterNewCard && _selectedCardId != null) {
+      if (usingSavedCard) {
         final saved = _cards.where((c) => c.id == _selectedCardId).firstOrNull;
         if (saved != null) {
           cardNumber = saved.cardNumberHash ?? saved.lastFour;
@@ -880,12 +934,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           cardCvc    = saved.cvc;
         }
       } else {
-        final num = _cardNumber.text.replaceAll(' ', '');
-        final month = _cardMonth.text.trim();
-        final year  = _cardYear.text.trim();
-        cardNumber = num.isEmpty ? null : num;
-        cardExpiry = month.isNotEmpty && year.isNotEmpty ? '$month/$year' : null;
-        cardCvc    = _cardCvc.text.trim().isEmpty ? null : _cardCvc.text.trim();
+        // Must satisfy the backend's format validation (digits only), but
+        // is never actually used to charge anything — Stripe's client_secret
+        // confirmation below is what authorizes the real card.
+        cardNumber = '4242424242424242';
+        cardExpiry = '12/99';
+        cardCvc    = '000';
       }
     }
 
@@ -935,18 +989,40 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       await s.clearBackendCart();
       if (!mounted) return;
       Navigator.of(context).pushNamed('/confirmation', arguments: order);
-    } else {
-      // Card / digital wallet: send the user to the hosted checkout page,
-      // then poll this tab for capture.
-      setState(() {
-        _payment = payRes.data;
-        _pendingOrder = order;
-        _payError = null;
-        _step = 6;
-      });
-      _openPaymentUrl();
-      _startPolling();
+      return;
     }
+
+    final clientSecret = payRes.data!.clientSecret;
+    if (_pay == 0 && !usingSavedCard && clientSecret != null && clientSecret.isNotEmpty) {
+      // New card: confirm the PaymentIntent right here against the still-
+      // mounted Stripe Card Element — no redirect, no polling needed.
+      setState(() => _confirmingCard = true);
+      final cardState = _stripeCardKey.currentState;
+      final cardResult = cardState != null
+          ? await cardState.confirmPayment(clientSecret)
+          : StripeCardResult(success: false, errorMessage: 'Card details were lost — please re-enter your card and try again.');
+      if (!mounted) return;
+      setState(() => _confirmingCard = false);
+      if (!cardResult.success) {
+        setState(() => _placeError = cardResult.errorMessage ?? 'Payment failed. Please try again.');
+        return;
+      }
+      await s.clearBackendCart();
+      if (!mounted) return;
+      Navigator.of(context).pushNamed('/confirmation', arguments: order);
+      return;
+    }
+
+    // Saved card / Apple Pay / Google Pay: no client-side confirmation path
+    // wired up yet — fall back to the hosted-checkout redirect + poll flow.
+    setState(() {
+      _payment = payRes.data;
+      _pendingOrder = order;
+      _payError = null;
+      _step = 6;
+    });
+    _openPaymentUrl();
+    _startPolling();
   }
 
   void _openPaymentUrl() {
@@ -1033,18 +1109,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(k, style: AppText.body.copyWith(color: AppColors.ink600)), Text(v, style: AppText.label.copyWith(color: green ? AppColors.green600 : AppColors.ink900))]),
       );
 
-  Widget _cardSubField(String label, TextEditingController ctrl, String hint, String errorKey, {required int maxLen}) =>
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: AppText.muted.copyWith(fontSize: 11.5, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 5),
-        TextField(
-          controller: ctrl,
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(maxLen)],
-          decoration: InputDecoration(hintText: hint, errorText: _errors[errorKey]),
-          onChanged: (_) => setState(() => _errors.remove(errorKey)),
-        ),
-      ]);
 }
 
 String _checkoutFlagFromCode(String? code) {

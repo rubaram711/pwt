@@ -2,8 +2,10 @@
 // routes between the top-level destinations (mirrors the prototype's <App>).
 
 import 'package:flutter/material.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:provider/provider.dart';
 
+import '../const/stripe_config.dart';
 import 'core/embedded_fonts.dart';
 import 'core/theme.dart';
 import 'state/app_state.dart';
@@ -18,6 +20,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Register any embedded base64 fonts (no-op until the slots are filled).
   await loadEmbeddedFonts();
+  Stripe.publishableKey = kStripePublishableKey;
+  await Stripe.instance.applySettings();
   runApp(const PwtApp());
 }
 

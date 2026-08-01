@@ -280,22 +280,65 @@ class _ProductScreenState extends State<ProductScreen> {
           ]),
         ),
       const SizedBox(height: 14),
-      PwtButton(
-        isRent ? 'Start Rental' : 'Add to Cart',
-        icon: Icons.shopping_cart_outlined,
-        fullWidth: true,
-        onPressed: () {
-          if (AppState.instance.user == null) {
-            Navigator.of(context).pushNamed('/login', arguments: {'returnRoute': '/product', 'returnArguments': p});
-            return;
+      AnimatedBuilder(
+        animation: AppState.instance,
+        builder: (context, _) {
+          final mode = isRent ? 'rent' : 'buy';
+          final line = AppState.instance.cart.where((l) => l.product.id == p.id && l.mode == mode).firstOrNull;
+          if (line == null) {
+            return PwtButton(
+              isRent ? 'Start Rental' : 'Add to Cart',
+              icon: Icons.shopping_cart_outlined,
+              fullWidth: true,
+              onPressed: () {
+                if (AppState.instance.user == null) {
+                  Navigator.of(context).pushNamed('/login', arguments: {'returnRoute': '/product', 'returnArguments': p});
+                  return;
+                }
+                AppState.instance.addToCart(p, mode: mode);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('${p.name ?? 'Product'} added to cart'),
+                  behavior: SnackBarBehavior.floating,
+                  backgroundColor: AppColors.ink900,
+                  action: SnackBarAction(label: 'View Cart', textColor: Colors.white, onPressed: () => Navigator.of(context).pushNamed('/cart')),
+                ));
+              },
+            );
           }
-          AppState.instance.addToCart(p, mode: isRent ? 'rent' : 'buy');
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('${p.name ?? 'Product'} added to cart'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: AppColors.ink900,
-            action: SnackBarAction(label: 'View Cart', textColor: Colors.white, onPressed: () => Navigator.of(context).pushNamed('/cart')),
-          ));
+          return Row(children: [
+            Expanded(
+              child: Container(
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.blue50,
+                  borderRadius: BorderRadius.circular(AppRadius.sm + 1),
+                  border: Border.all(color: AppColors.blue200, width: 1.5),
+                ),
+                child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  _qtyStepBtn(Icons.remove, () => AppState.instance.decQty(line)),
+                  Text('${line.qty}', style: AppText.label.copyWith(fontWeight: FontWeight.w700, fontSize: 15)),
+                  _qtyStepBtn(Icons.add, () => AppState.instance.incQty(line)),
+                ]),
+              ),
+            ),
+            const SizedBox(width: 10),
+            InkWell(
+              onTap: () => AppState.instance.removeLine(line),
+              borderRadius: BorderRadius.circular(AppRadius.sm + 1),
+              child: Container(
+                width: 48,
+                height: 48,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(AppRadius.sm + 1),
+                  border: Border.all(color: const Color(0xFFF3C9C9), width: 1.5),
+                ),
+                child: const Icon(Icons.delete_outline, color: AppColors.danger, size: 20),
+              ),
+            ),
+          ]);
         },
       ),
       const SizedBox(height: 10),
@@ -320,6 +363,18 @@ class _ProductScreenState extends State<ProductScreen> {
       ]),
     ]);
   }
+
+  Widget _qtyStepBtn(IconData icon, VoidCallback onTap) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+          child: Icon(icon, size: 16, color: AppColors.blue700),
+        ),
+      );
 
   Widget _modeTab(String label, int i) {
     final on = _mode == i;

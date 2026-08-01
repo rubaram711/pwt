@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/tokens.dart';
 import '../theme/app_theme.dart';
 import '../widgets/dash_kit.dart';
+import '../widgets/empty_states.dart';
 import '../../Models/Orders/order_model.dart';
 import '../../Models/Pagination/pagination_model.dart';
 import '../../Backend/Orders/get_orders.dart';
@@ -186,6 +187,8 @@ class _CompanyOrdersScreenState extends State<CompanyOrdersScreen> {
                   const Padding(padding: EdgeInsets.symmetric(vertical: 32), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
                 else if (_error != null)
                   Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Text(_error!, style: AppText.muted.copyWith(color: AppColors.danger)))
+                else if (_all.isEmpty && _currentStatus == null)
+                  SizedBox(width: double.infinity, child: Center(child: OrdersEmptyState(onBrowse: () => Navigator.of(context).pushNamed('/rfq'))))
                 else if (_all.isEmpty)
                   Padding(padding: const EdgeInsets.symmetric(vertical: 28), child: Center(child: Text('No orders in this category.', style: AppText.muted)))
                 else

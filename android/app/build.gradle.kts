@@ -42,3 +42,9 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Theme.MaterialComponents.* styles (required by flutter_stripe's native
+    // Android views) come from this library, not from AppCompat alone.
+    implementation("com.google.android.material:material:1.12.0")
+}
