@@ -25,7 +25,8 @@
       "Read(//c/src/flutter/packages/flutter/lib/src/widgets/**)",
       "Read(//c//**)",
       "Read(//c/Users/infobank/**)",
-      "Bash(find /c -iname \"flutter_stripe-*\" -type d)"
+      "Bash(find /c -iname \"flutter_stripe-*\" -type d)",
+      "Bash(flutter build *)"
     ]
   }
 }
