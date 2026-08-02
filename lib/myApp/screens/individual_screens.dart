@@ -225,7 +225,7 @@ class _IndividualShellState extends State<IndividualShell> {
           setState(() => _tab = k);
           if (k == 'devices' && _machinesError != null) _loadMachines();
           if (k == 'products') _productsKey.currentState?.retryIfFailed();
-          if (k == 'orders') _ordersKey.currentState?.retryIfFailed();
+          if (k == 'orders') _ordersKey.currentState?.refresh();
         },
         items: [
           PwtNavItem(key: 'home', label: s['home']!, icon: Icons.home_outlined),
@@ -282,22 +282,25 @@ class _HomeTab extends StatelessWidget {
                 ],
                 Row(
                   children: [
-                    const Icon(PwtIcons.drop, size: 16, color: PwtColors.brand),
-                    const SizedBox(width: 6),
-                    Text(s['pureWaterPureLife']!, style: PwtType.eyebrow(color: PwtColors.brand).copyWith(fontSize: 12, fontWeight: FontWeight.w700)),
+                    // const Icon(PwtIcons.drop, size: 16, color: PwtColors.brand),
+                    // const SizedBox(width: 6),
+                    Text(s['pureWaterPureLife']!,
+                      style: PwtType.headline(arabic: ar).copyWith(fontSize: 27, height: 1.2),
+                        // style: PwtType.eyebrow(color: PwtColors.brand).copyWith(fontSize: 27, fontWeight: FontWeight.w700)
+                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Text.rich(
-                  TextSpan(
-                    style: PwtType.headline(arabic: ar).copyWith(fontSize: 27, height: 1.2),
-                    children: [
-                      TextSpan(text: s['homeHeadlinePlain']!),
-                      TextSpan(text: s['homeHeadlineAccent']!, style: const TextStyle(color: PwtColors.brand)),
-                      TextSpan(text: ' ${s['homeHeadlineTail']!}'),
-                    ],
-                  ),
-                ),
+                // const SizedBox(height: 10),
+                // Text.rich(
+                //   TextSpan(
+                //     style: PwtType.headline(arabic: ar).copyWith(fontSize: 27, height: 1.2),
+                //     children: [
+                //       TextSpan(text: s['homeHeadlinePlain']!),
+                //       TextSpan(text: s['homeHeadlineAccent']!, style: const TextStyle(color: PwtColors.brand)),
+                //       TextSpan(text: ' ${s['homeHeadlineTail']!}'),
+                //     ],
+                //   ),
+                // ),
                 // const SizedBox(height: 10),
                 // Text(s['homeHeroSub']!, style: PwtType.body(color: PwtColors.textSec, arabic: ar).copyWith(fontSize: 13.5, height: 1.55)),
 
@@ -1710,6 +1713,11 @@ class _IndividualOrdersScreenState extends State<IndividualOrdersScreen> {
     if (_errorMsg != null) _load();
   }
 
+  /// Called by the shell every time the Orders tab is tapped — always
+  /// re-fetches page 1 with the current filter/sort, so newly placed or
+  /// updated orders show up without needing an app restart.
+  void refresh() => _load();
+
   @override
   void initState() {
     super.initState();
@@ -1753,6 +1761,7 @@ class _IndividualOrdersScreenState extends State<IndividualOrdersScreen> {
 
   Color _statusColor(String st) => switch (st) {
     'pending'   => PwtColors.warning,
+    'placed'    => PwtColors.success,
     'confirmed' => PwtColors.brand,
     'scheduled' => PwtColors.brand,
     'completed' => PwtColors.success,
@@ -1762,6 +1771,7 @@ class _IndividualOrdersScreenState extends State<IndividualOrdersScreen> {
 
   String _statusLabel(String st) => switch (st) {
     'pending'   => 'Pending',
+    'placed'    => 'Placed',
     'confirmed' => 'Confirmed',
     'scheduled' => 'Scheduled',
     'completed' => 'Completed',
@@ -1925,7 +1935,7 @@ class _IndividualOrdersScreenState extends State<IndividualOrdersScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Directionality(textDirection: TextDirection.ltr, child: Text(o.displayName ?? _shortId(o.publicId), style: PwtType.mono(size: 11, color: PwtColors.brand, weight: FontWeight.w600))),
-              Pill(label: _statusLabel(o.status), color: _statusColor(o.status), dot: true),
+              Pill(label: _statusLabel(o.displayStatus), color: _statusColor(o.displayStatus), dot: true),
             ],
           ),
           const SizedBox(height: 8),

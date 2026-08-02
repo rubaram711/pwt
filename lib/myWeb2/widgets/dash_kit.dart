@@ -550,6 +550,7 @@ class StBadge extends StatelessWidget {
     if (s.contains('agreed') ||
         s.contains('delivered') ||
         s.contains('paid') ||
+        s.contains('placed') ||
         s.contains('purchas') ||
         s.contains('complete')) return (const Color(0xFFE7F7EF), AppColors.green600);
     return (const Color(0xFFE6EFFF), AppColors.blue700);

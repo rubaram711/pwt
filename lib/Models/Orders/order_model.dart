@@ -124,6 +124,13 @@ class OrderModel {
       isCancellable: json['is_cancellable'] ?? false,
     );
   }
+
+  /// Display-only status: once payment has actually been captured, a
+  /// "pending" order reads as "placed" instead — the order record itself
+  /// still says "pending" until it moves through fulfilment, but showing
+  /// that label for an already-paid order reads as if payment failed.
+  String get displayStatus =>
+      (status.toLowerCase() == 'pending' && paymentStatus?.toLowerCase() == 'captured') ? 'placed' : status;
 }
 
 class OrderItemModel {
@@ -340,4 +347,11 @@ class OrderDetailModel {
       statusHistory: json['status_history'],
     );
   }
+
+  /// Display-only status: once payment has actually been captured, a
+  /// "pending" order reads as "placed" instead — the order record itself
+  /// still says "pending" until it moves through fulfilment, but showing
+  /// that label for an already-paid order reads as if payment failed.
+  String get displayStatus =>
+      (status.toLowerCase() == 'pending' && paymentStatus?.toLowerCase() == 'captured') ? 'placed' : status;
 }

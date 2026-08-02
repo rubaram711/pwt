@@ -199,7 +199,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
           Expanded(flex: 2, child: Text(o.displayName ?? _shortId(o.publicId), style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink900))),
           Expanded(flex: 2, child: Text(_fmt(o.placedAt), style: const TextStyle(fontSize: 13.5, color: AppColors.ink700))),
           Expanded(flex: 2, child: Text('${o.currency} ${o.totalAmount}', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink900))),
-          Expanded(flex: 2, child: Align(alignment: Alignment.centerLeft, child: StBadge(o.status))),
+          Expanded(flex: 2, child: Align(alignment: Alignment.centerLeft, child: StBadge(o.displayStatus))),
           SizedBox(width: 90, child: Align(alignment: Alignment.centerRight, child:
             DBtn(
               _ongoing(o.status) ? 'Track' : 'View',
@@ -240,7 +240,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(border: Border.all(color: AppColors.line), borderRadius: BorderRadius.circular(12)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [Expanded(child: _prodCell(o)), StBadge(o.status)]),
+          Row(children: [Expanded(child: _prodCell(o)), StBadge(o.displayStatus)]),
           const SizedBox(height: 10),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Text('${_shortId(o.publicId)} · ${_fmt(o.placedAt)}', style: const TextStyle(fontSize: 12.5, color: AppColors.ink500)),
@@ -387,7 +387,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   // ── ongoing ──────────────────────────────────────────
   Widget _ongoingMain(OrderDetailModel o) => Column(children: [
     DCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      DCardHead('Tracking · ${o.displayName ?? _shortId(o.publicId)}', trailing: StBadge(o.status)),
+      DCardHead('Tracking · ${o.displayName ?? _shortId(o.publicId)}', trailing: StBadge(o.displayStatus)),
       DashTimeline(_trackingSteps(o)),
     ])),
     const SizedBox(height: 18),
@@ -430,7 +430,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           const SizedBox(height: 3),
           Text('Completed ${_fmt(o.completedAt)}', style: const TextStyle(fontSize: 13, color: AppColors.ink500)),
         ])),
-        StBadge(o.status),
+        StBadge(o.displayStatus),
       ]),
     ])),
     const SizedBox(height: 18),
@@ -480,7 +480,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           const SizedBox(height: 3),
           Text('Cancelled ${_fmt(o.cancelledAt)}', style: const TextStyle(fontSize: 13, color: AppColors.ink500)),
         ])),
-        StBadge(o.status),
+        StBadge(o.displayStatus),
       ]),
       if (o.cancellationReason != null) ...[
         const SizedBox(height: 14),

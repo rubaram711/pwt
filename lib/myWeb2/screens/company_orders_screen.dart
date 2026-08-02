@@ -276,7 +276,7 @@ class _CompanyOrdersScreenState extends State<CompanyOrdersScreen> {
           _cell(2, Text('${o.itemsCount}', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink900))),
           _cell(3, Text('${o.currency} ${o.totalAmount}', style: const TextStyle(fontSize: 13.5, color: AppColors.ink700))),
           _cell(4, Text(_fmt(o.placedAt), style: const TextStyle(fontSize: 13.5, color: AppColors.ink700))),
-          _cell(5, Align(alignment: Alignment.centerLeft, child: StBadge(o.status))),
+          _cell(5, Align(alignment: Alignment.centerLeft, child: StBadge(o.displayStatus))),
           _cell(6, Align(alignment: Alignment.centerRight, child:
             DBtn('View', kind: DBtnKind.ghost, small: true,
               onTap: () => Navigator.of(ctx).pushNamed('/orderDetail', arguments: o.id)),
@@ -332,7 +332,7 @@ class _CompanyOrdersScreenState extends State<CompanyOrdersScreen> {
           kv('Total', '${o.currency} ${o.totalAmount}'),
           kv('Date', _fmt(o.placedAt)),
           const SizedBox(height: 8),
-          Align(alignment: Alignment.centerLeft, child: StBadge(o.status)),
+          Align(alignment: Alignment.centerLeft, child: StBadge(o.displayStatus)),
           const SizedBox(height: 12),
           DBtn('View', kind: DBtnKind.ghost, small: true,
             onTap: () => Navigator.of(ctx).pushNamed('/orderDetail', arguments: o.id)),

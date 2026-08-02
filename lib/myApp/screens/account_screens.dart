@@ -1667,6 +1667,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   Color _statusColor(String st) => switch (st) {
     'pending'   => PwtColors.warning,
+    'placed'    => PwtColors.success,
     'confirmed' => PwtColors.brand,
     'scheduled' => PwtColors.brand,
     'completed' => PwtColors.success,
@@ -1676,6 +1677,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   String _statusLabel(String st) => switch (st) {
     'pending'   => 'Pending',
+    'placed'    => 'Placed',
     'confirmed' => 'Confirmed',
     'scheduled' => 'Scheduled',
     'completed' => 'Completed',
@@ -1763,7 +1765,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Directionality(textDirection: TextDirection.ltr, child: Text(_shortId(o.publicId), style: PwtType.mono(size: 11, color: PwtColors.brand, weight: FontWeight.w600))),
-                            Pill(label: _statusLabel(o.status), color: _statusColor(o.status), dot: true),
+                            Pill(label: _statusLabel(o.displayStatus), color: _statusColor(o.displayStatus), dot: true),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -1913,6 +1915,7 @@ class _OrderApiDetailScreenState extends State<OrderApiDetailScreen> {
 
   Color _statusColor(String st) => switch (st) {
     'pending'   => PwtColors.warning,
+    'placed'    => PwtColors.success,
     'confirmed' => PwtColors.brand,
     'scheduled' => PwtColors.brand,
     'completed' => PwtColors.success,
@@ -1922,6 +1925,7 @@ class _OrderApiDetailScreenState extends State<OrderApiDetailScreen> {
 
   String _statusLabel(String st) => switch (st) {
     'pending'   => 'Pending',
+    'placed'    => 'Placed',
     'confirmed' => 'Confirmed',
     'scheduled' => 'Scheduled',
     'completed' => 'Completed',
@@ -1951,7 +1955,7 @@ class _OrderApiDetailScreenState extends State<OrderApiDetailScreen> {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       children: [
         // status pill
-        Row(children: [Pill(label: _statusLabel(o.status), color: _statusColor(o.status), dot: true)]),
+        Row(children: [Pill(label: _statusLabel(o.displayStatus), color: _statusColor(o.displayStatus), dot: true)]),
         const SizedBox(height: 14),
 
         // ── cancelled banner ──
