@@ -29,7 +29,7 @@ class ConfirmationScreen extends StatelessWidget {
             child: const Icon(Icons.check, size: 44, color: AppColors.green600),
           ),
           const SizedBox(height: 18),
-          Text('Order Confirmed!', style: AppText.headline(30), textAlign: TextAlign.center),
+          Text('Order placed successfully', style: AppText.headline(30), textAlign: TextAlign.center),
           const SizedBox(height: 10),
           Text(
             'Thank you. Your order has been placed successfully. A confirmation email is on its way with all the details.',

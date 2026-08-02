@@ -39,7 +39,16 @@ class StripeCardFieldsState extends State<StripeCardFields> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _mount());
   }
 
-  void _mount() {
+  Future<void> _mount() async {
+    if (!mounted) return;
+    try {
+      await StripeJs.waitUntilLoaded();
+    } catch (_) {
+      if (!mounted) return;
+      widget.onChange?.call(false, 'Payment form failed to load. Please refresh the page and try again.');
+      setState(() => _hasError = true);
+      return;
+    }
     if (!mounted) return;
     final stripe = StripeJs.init(widget.publishableKey);
     final card = stripe.createElement('card');

@@ -15,6 +15,10 @@ class StripeCardResult {
 class StripeJs {
   StripeJs._();
 
+  static Future<void> waitUntilLoaded({Duration timeout = const Duration(seconds: 10)}) {
+    throw UnsupportedError('StripeJs is only available on Flutter Web.');
+  }
+
   static StripeJs init(String publishableKey) {
     throw UnsupportedError('StripeJs is only available on Flutter Web.');
   }

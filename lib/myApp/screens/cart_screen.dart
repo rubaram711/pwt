@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_stripe/flutter_stripe.dart' as stripe;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
@@ -28,6 +29,29 @@ import '../../Models/address_model.dart';
 import '../../Models/payment_card_model.dart';
 import '../../Models/Orders/order_model.dart';
 import 'account_screens.dart';
+
+// ─── Debug logging for the Stripe payment-confirmation flow ───
+// Verbose, unmasked step markers requested for diagnosing where a payment
+// confirmation stops (before/inside/after confirmPayment or PaymentSheet).
+// Purely additive logging — no business logic here.
+void _logStep(String step, [Map<String, Object?>? data]) {
+  debugPrint('==============================');
+  debugPrint('STEP: $step');
+  debugPrint('Time: ${DateTime.now()}');
+  if (data != null) {
+    for (final entry in data.entries) {
+      debugPrint('Data.${entry.key}: ${entry.value}');
+    }
+  }
+  debugPrint('==============================');
+}
+
+/// Best-effort extraction of the PaymentIntent id from a Stripe client
+/// secret of the form "pi_XXXX_secret_YYYY".
+String _paymentIntentIdFromClientSecret(String clientSecret) {
+  final i = clientSecret.indexOf('_secret_');
+  return i == -1 ? 'UNKNOWN (unexpected clientSecret format)' : clientSecret.substring(0, i);
+}
 
 String _genOrderId(AccountKind role) {
   final n = 2300 + Random().nextInt(999);
@@ -659,34 +683,96 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     final payment = payRes.data!;
     final clientSecret = payment.clientSecret ?? '';
+
+    // Full, unmasked backend response for this payment — everything the
+    // /payments/initiate endpoint returned, including the raw clientSecret.
+    _logStep('Backend response: initiatePayment()', {
+      'paymentId': payment.paymentId,
+      'publicId': payment.publicId,
+      'orderId': payment.orderId,
+      'status': payment.status,
+      'paymentMethod (backend)': payment.paymentMethod,
+      'gateway': payment.gateway,
+      'amount': payment.amount,
+      'currency': payment.currency,
+      'paymentUrl': payment.paymentUrl,
+      'clientSecret (full, unmasked)': clientSecret,
+      'sessionId': payment.sessionId,
+      'paymentReference': payment.paymentReference,
+      'paymentToken': payment.paymentToken,
+      'failureReason': payment.failureReason,
+    });
+
     debugPrint('[Checkout._submit] paymentMethod=$_paymentMethod usingSavedCard=$usingSavedCard clientSecret=${clientSecret.isNotEmpty ? "present" : "MISSING"}');
 
     if (_paymentMethod == 'card' && _needsNewCard && clientSecret.isNotEmpty) {
       // New card: confirm the PaymentIntent right here against the still-
       // mounted Stripe CardField — no separate screen, no browser redirect.
       setState(() { _submitting = false; _confirmingCard = true; });
+
+      final paymentIntentId = _paymentIntentIdFromClientSecret(clientSecret);
+      final billingDetails = stripe.BillingDetails(
+        name: user?.name,
+        email: user?.email,
+        phone: user?.phone,
+      );
+
+      _logStep('Pre-confirm: clientSecret parsed / payment method resolved', {
+        'clientSecret (full, unmasked)': clientSecret,
+        'paymentIntentId (extracted from clientSecret)': paymentIntentId,
+        'paymentMethodId': 'none — no pre-created PaymentMethod is used; card details come inline from the mounted CardField at confirm time',
+        'paymentMethodParams.type': 'card (PaymentMethodParams.card)',
+        'billingDetails.name': user?.name,
+        'billingDetails.email': user?.email,
+        'billingDetails.phone': user?.phone,
+      });
+
+      _logStep('About to call Stripe.instance.confirmPayment()', {
+        'paymentIntentClientSecret (full, unmasked)': clientSecret,
+        'data.runtimeType': 'PaymentMethodParams.card',
+      });
+
       try {
-        await stripe.Stripe.instance.confirmPayment(
+        _logStep('confirmPayment() call started');
+        final confirmedIntent = await stripe.Stripe.instance.confirmPayment(
           paymentIntentClientSecret: clientSecret,
           data: stripe.PaymentMethodParams.card(
             paymentMethodData: stripe.PaymentMethodData(
-              billingDetails: stripe.BillingDetails(
-                name: user?.name,
-                email: user?.email,
-                phone: user?.phone,
-              ),
+              billingDetails: billingDetails,
             ),
           ),
         );
+        _logStep('confirmPayment() returned — SUCCESS', {
+          'PaymentIntent.id': confirmedIntent.id,
+          'PaymentIntent.status': confirmedIntent.status,
+          'PaymentIntent.amount': confirmedIntent.amount,
+          'PaymentIntent.currency': confirmedIntent.currency,
+          'PaymentIntent.clientSecret': confirmedIntent.clientSecret,
+          'PaymentIntent.paymentMethodId': confirmedIntent.paymentMethodId,
+          'PaymentIntent.livemode': confirmedIntent.livemode,
+          'PaymentIntent.captureMethod': confirmedIntent.captureMethod,
+          'PaymentIntent.confirmationMethod': confirmedIntent.confirmationMethod,
+        });
+
         if (!mounted) return;
         setState(() => _confirmingCard = false);
         context.read<CartState>().clearBackend();
         if (!mounted) return;
+        _logStep('Navigating to OrderSuccessScreen — payment confirmed, flow complete');
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => OrderSuccessScreen(order: order, subtotal: widget.subtotal, vat: widget.vat)),
         );
-      } on stripe.StripeException catch (e) {
+      } on stripe.StripeException catch (e, st) {
+        _logStep('confirmPayment() threw StripeException — flow stopped INSIDE confirm', {
+          'error.code': e.error.code,
+          'error.type': e.error.type,
+          'error.message': e.error.message,
+          'error.localizedMessage': e.error.localizedMessage,
+          'error.stripeErrorCode': e.error.stripeErrorCode,
+          'error.declineCode': e.error.declineCode,
+        });
+        debugPrint('[Checkout._submit] StripeException stack trace:\n$st');
         debugPrint('[Checkout._submit] StripeException: code=${e.error.code} message=${e.error.message} localized=${e.error.localizedMessage}');
         if (!mounted) return;
         final canceled = e.error.code == stripe.FailureCode.Canceled;
@@ -694,8 +780,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _confirmingCard = false;
           _error = canceled ? 'Payment canceled.' : (e.error.localizedMessage ?? e.error.message ?? 'Payment failed. Please try again.');
         });
-      } catch (e) {
-        debugPrint('[Checkout._submit] error: $e');
+      } on PlatformException catch (e, st) {
+        _logStep('confirmPayment() threw PlatformException — flow stopped INSIDE confirm (method-channel level)', {
+          'code': e.code,
+          'message': e.message,
+          'details': e.details,
+        });
+        debugPrint('[Checkout._submit] PlatformException stack trace:\n$st');
+        if (!mounted) return;
+        setState(() { _confirmingCard = false; _error = 'Payment failed. Please try again.'; });
+      } catch (e, st) {
+        _logStep('confirmPayment() threw a generic exception — flow stopped INSIDE confirm', {
+          'error': e.toString(),
+          'runtimeType': e.runtimeType.toString(),
+        });
+        debugPrint('[Checkout._submit] Generic exception stack trace:\n$st');
         if (!mounted) return;
         setState(() { _confirmingCard = false; _error = 'Payment failed. Please try again.'; });
       }
@@ -1381,6 +1480,26 @@ class _PaymentProcessingScreenState extends State<PaymentProcessingScreen> with 
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    // Full, unmasked backend response this screen was constructed with.
+    _logStep('Backend response: payment received by PaymentProcessingScreen', {
+      'paymentId': widget.payment.paymentId,
+      'publicId': widget.payment.publicId,
+      'orderId': widget.payment.orderId,
+      'status': widget.payment.status,
+      'paymentMethod (backend)': widget.payment.paymentMethod,
+      'gateway': widget.payment.gateway,
+      'amount': widget.payment.amount,
+      'currency': widget.payment.currency,
+      'paymentUrl': widget.payment.paymentUrl,
+      'clientSecret (full, unmasked)': widget.payment.clientSecret,
+      'sessionId': widget.payment.sessionId,
+      'paymentReference': widget.payment.paymentReference,
+      'paymentToken': widget.payment.paymentToken,
+      'failureReason': widget.payment.failureReason,
+      'useStripeSheet': _useStripeSheet,
+    });
+
     debugPrint('[PaymentProcessing] useStripeSheet=$_useStripeSheet clientSecret=${_useStripeSheet ? "present" : "MISSING"} paymentUrl=${widget.payment.paymentUrl}');
     if (_useStripeSheet) {
       // Presenting the sheet synchronously from initState — before this
@@ -1447,11 +1566,25 @@ class _PaymentProcessingScreenState extends State<PaymentProcessingScreen> with 
 
   Future<void> _startStripePaymentSheet() async {
     setState(() => _error = null);
+
+    final clientSecret = widget.payment.clientSecret!;
+    final paymentIntentId = _paymentIntentIdFromClientSecret(clientSecret);
+
+    _logStep('Pre-confirm: clientSecret parsed for PaymentSheet', {
+      'clientSecret (full, unmasked)': clientSecret,
+      'paymentIntentId (extracted from clientSecret)': paymentIntentId,
+      'paymentMethodId': 'none — PaymentSheet collects/attaches the payment method itself during presentPaymentSheet()',
+    });
+
     try {
+      _logStep('About to call Stripe.instance.initPaymentSheet()', {
+        'paymentIntentClientSecret (full, unmasked)': clientSecret,
+        'merchantDisplayName': 'Pure Water Technology',
+      });
       debugPrint('[StripePaymentSheet] initPaymentSheet…');
       await stripe.Stripe.instance.initPaymentSheet(
         paymentSheetParameters: stripe.SetupPaymentSheetParameters(
-          paymentIntentClientSecret: widget.payment.clientSecret!,
+          paymentIntentClientSecret: clientSecret,
           merchantDisplayName: 'Pure Water Technology',
           // Temporarily disabled to isolate a generic, detail-less
           // presentPaymentSheet() failure on a MIUI/Xiaomi device that may
@@ -1461,24 +1594,52 @@ class _PaymentProcessingScreenState extends State<PaymentProcessingScreen> with 
           // googlePay: const stripe.PaymentSheetGooglePay(merchantCountryCode: 'AE', testEnv: true),
         ),
       );
+      _logStep('initPaymentSheet() returned successfully');
       if (!mounted) return;
+
+      _logStep('About to call Stripe.instance.presentPaymentSheet()');
       debugPrint('[StripePaymentSheet] presentPaymentSheet…');
       await stripe.Stripe.instance.presentPaymentSheet();
+      _logStep('presentPaymentSheet() returned — SUCCESS, payment confirmed');
       debugPrint('[StripePaymentSheet] presentPaymentSheet completed — payment confirmed.');
       if (!mounted) return;
       // ignore: use_build_context_synchronously
       context.read<CartState>().clearBackend();
       if (!mounted) return;
+      _logStep('Navigating to OrderSuccessScreen — flow complete');
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => OrderSuccessScreen(order: widget.order, subtotal: widget.subtotal, vat: widget.vat)),
       );
-    } on stripe.StripeException catch (e) {
+    } on stripe.StripeException catch (e, st) {
+      _logStep('PaymentSheet flow threw StripeException — flow stopped INSIDE init/presentPaymentSheet', {
+        'error.code': e.error.code,
+        'error.type': e.error.type,
+        'error.message': e.error.message,
+        'error.localizedMessage': e.error.localizedMessage,
+        'error.stripeErrorCode': e.error.stripeErrorCode,
+        'error.declineCode': e.error.declineCode,
+      });
+      debugPrint('[StripePaymentSheet] StripeException stack trace:\n$st');
       debugPrint('[StripePaymentSheet] StripeException: code=${e.error.code} type=${e.error.type} stripeErrorCode=${e.error.stripeErrorCode} declineCode=${e.error.declineCode} message=${e.error.message} localized=${e.error.localizedMessage}');
       if (!mounted) return;
       final canceled = e.error.code == stripe.FailureCode.Canceled;
       setState(() => _error = canceled ? 'Payment canceled.' : (e.error.localizedMessage ?? e.error.message ?? 'Payment failed. Please try again.'));
-    } catch (e) {
+    } on PlatformException catch (e, st) {
+      _logStep('PaymentSheet flow threw PlatformException — flow stopped INSIDE init/presentPaymentSheet (method-channel level)', {
+        'code': e.code,
+        'message': e.message,
+        'details': e.details,
+      });
+      debugPrint('[StripePaymentSheet] PlatformException stack trace:\n$st');
+      if (!mounted) return;
+      setState(() => _error = 'Payment failed. Please try again.');
+    } catch (e, st) {
+      _logStep('PaymentSheet flow threw a generic exception — flow stopped INSIDE init/presentPaymentSheet', {
+        'error': e.toString(),
+        'runtimeType': e.runtimeType.toString(),
+      });
+      debugPrint('[StripePaymentSheet] Generic exception stack trace:\n$st');
       debugPrint('[StripePaymentSheet] error: $e');
       if (!mounted) return;
       setState(() => _error = 'Payment failed. Please try again.');

@@ -35,6 +35,23 @@ class StripeJs {
 
   static StripeJs? _instance;
 
+  /// Waits for the global `Stripe` constructor from the <script
+  /// src="https://js.stripe.com/v3/"> tag in web/index.html to become
+  /// available. That script loads in parallel with the Flutter engine, so
+  /// on a slow network the very first frame can render — and try to mount
+  /// the card field — before it's ready. Polling here (instead of assuming
+  /// it's already loaded) avoids a spurious "Stripe.js did not load" error
+  /// and an unmounted, unclickable card field.
+  static Future<void> waitUntilLoaded({Duration timeout = const Duration(seconds: 10)}) async {
+    final deadline = DateTime.now().add(timeout);
+    while (js.context['Stripe'] == null) {
+      if (DateTime.now().isAfter(deadline)) {
+        throw StateError('Stripe.js did not load — check the <script src="https://js.stripe.com/v3/"> tag in web/index.html.');
+      }
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+  }
+
   static StripeJs init(String publishableKey) {
     final existing = _instance;
     if (existing != null) return existing;
