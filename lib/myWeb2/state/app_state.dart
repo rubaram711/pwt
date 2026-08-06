@@ -13,6 +13,10 @@ import '../../Backend/Cart/remove_cart_item.dart';
 import '../../Backend/Cart/clear_cart.dart';
 import '../../Backend/Products/show_product.dart';
 import '../../Models/Cart/cart_model.dart';
+import '../../Backend/Reference/get_countries.dart';
+import '../../Models/Reference/country_model.dart';
+import '../../Backend/Addresses/get_addresses.dart';
+import '../../Models/address_model.dart';
 
 /// One line in the cart.
 class CartLine {
@@ -27,7 +31,8 @@ class CartLine {
       final rentPrice = product.prices.where((p) => p.term == 'rent').firstOrNull;
       return double.tryParse(rentPrice?.amount ?? '0') ?? 0;
     }
-    return double.tryParse(product.finalPrice ?? product.startingPrice?.amount ?? '0') ?? 0;
+    final buyPrice = product.prices.where((p) => p.term == 'buy').firstOrNull;
+    return double.tryParse(buyPrice?.amount ?? product.finalPrice ?? product.startingPrice?.amount ?? '0') ?? 0;
   }
 
   double get lineTotal => unit * qty;
@@ -117,6 +122,13 @@ class AppState extends ChangeNotifier {
   final List<CartLine> cart = [];
   final List<MaintVisit> maintenance = [];
 
+  // ---- VAT ----
+  // Countries (with their vat_rate) fetched from the backend's country
+  // reference API. VAT starts at 0 until the real rate for the relevant
+  // address's country has loaded, rather than showing a guessed number.
+  List<CountryModel> countries = [];
+  num vatRatePercent = 0;
+
   String? _appliedPromoCode;
   double _promoDiscount = 0.0;
   bool _promoLoading = false;
@@ -163,7 +175,10 @@ class AppState extends ChangeNotifier {
     // whatsapp number — serve from cache instantly, refresh in background
     whatsappNumber = p.getString(_kWa);
     _refreshPublicSettings(p);
-    if (user != null) _loadCartFromBackend();
+    if (user != null) {
+      _loadCartFromBackend();
+      loadDefaultVatRate();
+    }
     _loaded = true;
     notifyListeners();
   }
@@ -196,6 +211,7 @@ class AppState extends ChangeNotifier {
     if (currentPassword != null) await p.setString(_kPassword, currentPassword!);
     if (accountType != null) await p.setString(_kAccountType, accountType);
     _loadCartFromBackend();
+    loadDefaultVatRate();
     notifyListeners();
   }
 
@@ -239,8 +255,43 @@ class AppState extends ChangeNotifier {
   // ---- cart ----
   int get cartCount => cart.fold(0, (s, l) => s + l.qty);
   double get subtotal => cart.fold(0, (s, l) => s + l.lineTotal);
-  double get vat => subtotal * 0.2;
+  double get vat => subtotal * (vatRatePercent / 100);
   double get total => subtotal + vat - _promoDiscount;
+
+  Future<void> loadCountries() async {
+    final res = await getCountries();
+    if (res.success && res.data != null) {
+      countries = res.data!;
+    }
+  }
+
+  num? vatRateForCountryCode(String? code) {
+    if (code == null) return null;
+    for (final c in countries) {
+      if (c.code == code) return c.vatRate;
+    }
+    return null;
+  }
+
+  /// Recomputes [vatRatePercent] from `address`'s country. Called on load
+  /// and whenever the user picks a different delivery address at checkout.
+  Future<void> setVatRateForAddress(AddressModel? address) async {
+    if (countries.isEmpty) await loadCountries();
+    final rate = vatRateForCountryCode(address?.country?.code);
+    vatRatePercent = rate ?? 0;
+    notifyListeners();
+  }
+
+  /// Loads the VAT rate for the signed-in user's default delivery address.
+  Future<void> loadDefaultVatRate() async {
+    await loadCountries();
+    final res = await getAddresses();
+    if (res.success && res.data != null && res.data!.isNotEmpty) {
+      final addresses = res.data!;
+      final def = addresses.firstWhere((a) => a.isDefault == true, orElse: () => addresses.first);
+      await setVatRateForAddress(def);
+    }
+  }
 
   Future<void> addToCart(ProductModel product, {String mode = 'buy', int qty = 1}) async {
     // Optimistic update

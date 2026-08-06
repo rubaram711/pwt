@@ -20,6 +20,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Register any embedded base64 fonts (no-op until the slots are filled).
   await loadEmbeddedFonts();
+
   Stripe.publishableKey = kStripePublishableKey;
   await Stripe.instance.applySettings();
   runApp(const PwtApp());

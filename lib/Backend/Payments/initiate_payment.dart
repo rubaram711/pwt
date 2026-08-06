@@ -16,17 +16,26 @@ Future<ApiResponse<PaymentModel>> initiatePayment({
   final dio.Dio di = AppState.instance.dioService.dio;
 
   final res = await ApiHandler.handleRequest<PaymentModel>(
-    request: () => di.post(
-      kPaymentsInitiateUrl,
-      data: {
-        'order_id': orderId,
-        'payment_method': paymentMethod,
-        'mode':"payment_intent"
-      },
-      options: idempotencyKey != null
-          ? dio.Options(headers: {'Idempotency-Key': idempotencyKey})
-          : null,
-    ),
+    request: () async {
+      try {
+        final response = await di.post(
+          kPaymentsInitiateUrl,
+          data: {
+            'order_id': orderId,
+            'payment_method': paymentMethod,
+            'mode':"payment_intent"
+          },
+          options: idempotencyKey != null
+              ? dio.Options(headers: {'Idempotency-Key': idempotencyKey})
+              : null,
+        );
+        print('[initiatePayment] RAW response (${response.statusCode}): ${response.data}');
+        return response;
+      } on dio.DioException catch (e) {
+        print('[initiatePayment] RAW error response (${e.response?.statusCode}): ${e.response?.data}');
+        rethrow;
+      }
+    },
     parser: (data) => PaymentModel.fromJson(data),
   );
 

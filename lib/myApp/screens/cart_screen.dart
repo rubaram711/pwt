@@ -1,6 +1,7 @@
 ﻿// Cart, checkout and success flows.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PlatformException;
@@ -176,7 +177,7 @@ class _CartScreenState extends State<CartScreen> {
     final rows = _rows(cart);
     final subtotal = rows.fold<double>(0, (sum, r) => sum + r.lineTotal);
     final hasQuote = rows.any((r) => r.isQuote);
-    final vat = subtotal * 0.05;
+    final vat = subtotal * (web.AppState.instance.vatRatePercent / 100);
     final total = subtotal + vat;
     final quoteFlow = widget.role == AccountKind.business || hasQuote;
     final isLoggedIn = web.AppState.instance.user != null;
@@ -212,7 +213,7 @@ class _CartScreenState extends State<CartScreen> {
                 children: [
                   SummaryRow(label: s['subtotal']!, value: _money(subtotal, PwtColors.textSec)),
                   SummaryRow(label: s['shippingFee']!, value: Text(s['free']!, style: const TextStyle(color: PwtColors.success, fontWeight: FontWeight.w600))),
-                  SummaryRow(label: s['vat']!, value: _money(vat, PwtColors.textSec)),
+                  SummaryRow(label: '${s['vat']} (${_fmtPercent(web.AppState.instance.vatRatePercent)}%)', value: _money(vat, PwtColors.textSec)),
                   SummaryRow(label: s['total']!, bold: true, last: true, value: _money(total, PwtColors.textPri)),
                 ],
               ),
@@ -308,6 +309,8 @@ String _fmt(num v) {
   final intPart = parts[0].replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
   return parts.length > 1 ? '$intPart.${parts[1]}' : intPart;
 }
+
+String _fmtPercent(num v) => v % 1 == 0 ? v.toInt().toString() : v.toString();
 
 class _CartItemCard extends StatelessWidget {
   const _CartItemCard({required this.row});
@@ -479,6 +482,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   AddressModel? _selectedAddress;
   String? _addressError;
 
+  // VAT tracks whichever address is selected above — recomputed from
+  // widget.subtotal whenever the user picks a different delivery address.
+  late double _vat = widget.vat;
+  late double _total = widget.total;
+
   // Step 1 – delivery
   DateTime? _deliveryDate;
   String? _timeSlot; // 'morning' | 'afternoon' | 'evening'
@@ -529,6 +537,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       } else {
         _addressError = res.message ?? 'Failed to load addresses.';
       }
+    });
+    if (_selectedAddress != null) await _selectAddress(_selectedAddress!);
+  }
+
+  /// Selects `a` as the delivery address and recomputes VAT from its
+  /// country — VAT always reflects whichever address is currently active.
+  Future<void> _selectAddress(AddressModel a) async {
+    setState(() => _selectedAddress = a);
+    await web.AppState.instance.setVatRateForAddress(a);
+    if (!mounted) return;
+    setState(() {
+      _vat = widget.subtotal * (web.AppState.instance.vatRatePercent / 100);
+      _total = widget.subtotal + _vat;
     });
   }
 
@@ -753,6 +774,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'PaymentIntent.captureMethod': confirmedIntent.captureMethod,
           'PaymentIntent.confirmationMethod': confirmedIntent.confirmationMethod,
         });
+        debugPrint('[Stripe confirm raw response] ${jsonEncode(confirmedIntent.toJson())}');
 
         if (!mounted) return;
         setState(() => _confirmingCard = false);
@@ -761,7 +783,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _logStep('Navigating to OrderSuccessScreen — payment confirmed, flow complete');
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => OrderSuccessScreen(order: order, subtotal: widget.subtotal, vat: widget.vat)),
+          MaterialPageRoute(builder: (_) => OrderSuccessScreen(order: order, subtotal: widget.subtotal, vat: _vat)),
         );
       } on stripe.StripeException catch (e, st) {
         _logStep('confirmPayment() threw StripeException — flow stopped INSIDE confirm', {
@@ -774,6 +796,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         });
         debugPrint('[Checkout._submit] StripeException stack trace:\n$st');
         debugPrint('[Checkout._submit] StripeException: code=${e.error.code} message=${e.error.message} localized=${e.error.localizedMessage}');
+        try {
+          debugPrint('[Stripe confirm raw error response] ${jsonEncode(e.error.toJson())}');
+        } catch (_) {}
         if (!mounted) return;
         final canceled = e.error.code == stripe.FailureCode.Canceled;
         setState(() {
@@ -812,7 +837,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         payment: payment,
         order: order,
         subtotal: widget.subtotal,
-        vat: widget.vat,
+        vat: _vat,
       )),
     );
   }
@@ -1015,7 +1040,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       children: [
         for (final addr in _addresses)
           GestureDetector(
-            onTap: () => setState(() => _selectedAddress = addr),
+            onTap: () => _selectAddress(addr),
             child: Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(14),
@@ -1248,8 +1273,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             children: [
               SummaryRow(label: s['subtotal']!, value: _money(widget.subtotal, PwtColors.textSec)),
               SummaryRow(label: s['shippingFee']!, value: Text(s['free']!, style: const TextStyle(color: PwtColors.success, fontWeight: FontWeight.w600))),
-              SummaryRow(label: s['vat']!, value: _money(widget.vat, PwtColors.textSec)),
-              SummaryRow(label: s['total']!, bold: true, last: true, value: _money(widget.subtotal + widget.vat, PwtColors.textPri)),
+              SummaryRow(label: '${s['vat']} (${_fmtPercent(web.AppState.instance.vatRatePercent)}%)', value: _money(_vat, PwtColors.textSec)),
+              SummaryRow(label: s['total']!, bold: true, last: true, value: _money(_total, PwtColors.textPri)),
             ],
           ),
         ),
@@ -1764,7 +1789,7 @@ class OrderSuccessScreen extends StatelessWidget {
               child: Column(
                 children: [
                   SummaryRow(label: s['subtotal']!, value: _money(double.tryParse(order.subtotalAmount) ?? subtotal, PwtColors.textSec)),
-                  SummaryRow(label: s['vat']!, value: _money(double.tryParse(order.taxAmount) ?? vat, PwtColors.textSec)),
+                  SummaryRow(label: '${s['vat']} (${_fmtPercent(order.taxRate ?? web.AppState.instance.vatRatePercent)}%)', value: _money(double.tryParse(order.taxAmount) ?? vat, PwtColors.textSec)),
                   SummaryRow(label: s['total']!, bold: true, last: true, value: _money(double.tryParse(order.totalAmount) ?? (subtotal + vat), PwtColors.textPri)),
                 ],
               ),

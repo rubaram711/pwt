@@ -5,16 +5,53 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../theme/tokens.dart';
 import '../theme/app_theme.dart';
 import '../state/app_state.dart';
+import '../../myApp/core/embedded_images.dart';
 
-/// Money formatter: £1,536
-String money(num n) {
-  final s = n.round().toString();
-  final buf = StringBuffer();
-  for (int i = 0; i < s.length; i++) {
-    if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
-    buf.write(s[i]);
+/// The AED dirham symbol — the same embedded glyph myApp pairs with
+/// numerals, used here instead of a currency code or symbol string.
+class Dirham extends StatelessWidget {
+  const Dirham({super.key, this.size = 12, this.color});
+
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? AppColors.ink900;
+    return SvgPicture.memory(
+      EmbeddedImages.dirham,
+      width: size,
+      height: size,
+      colorFilter: ColorFilter.mode(c, BlendMode.srcIn),
+    );
   }
-  return '£$buf';
+}
+
+/// Money formatter: 1,536 or 1,536.50 — pair with `Dirham` for display (no
+/// currency symbol baked in). Mirrors myApp's `_fmt`: whole numbers stay
+/// unrounded integers, fractional amounts keep 2 decimal places rather than
+/// being rounded away.
+String money(num n) {
+  final s = n % 1 == 0 ? n.toInt().toString() : n.toStringAsFixed(2);
+  final parts = s.split('.');
+  final intPart = parts[0].replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+  return parts.length > 1 ? '$intPart.${parts[1]}' : intPart;
+}
+
+/// A dirham glyph next to "1,536" — mirrors myApp's PriceText/_money helpers.
+Widget moneyText(num v, TextStyle? style, {double symbolSize = 12, String prefix = '', String suffix = ''}) {
+  final color = style?.color ?? AppColors.ink900;
+  return Row(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.baseline,
+    textBaseline: TextBaseline.alphabetic,
+    children: [
+      if (prefix.isNotEmpty) Text(prefix, style: style),
+      Dirham(size: symbolSize, color: color),
+      const SizedBox(width: 4),
+      Text('${money(v)}$suffix', style: style),
+    ],
+  );
 }
 
 const _storeLinks = [

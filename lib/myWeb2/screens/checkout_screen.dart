@@ -190,6 +190,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _addressLoadError = res.message ?? 'Failed to load addresses.';
       }
     });
+    if (_selectedAddress != null) await _selectAddress(_selectedAddress!);
+  }
+
+  /// Selects `a` as the delivery address and refreshes the VAT rate to match
+  /// its country — VAT is computed from whichever address is active here.
+  Future<void> _selectAddress(AddressModel a) async {
+    setState(() { _selectedAddress = a; _errors.remove('address'); });
+    await AppState.instance.setVatRateForAddress(a);
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadCards() async {
@@ -236,8 +245,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   ];
   final _slots = const ['Morning · 8AM–12PM', 'Afternoon · 12PM–4PM', 'Evening · 4PM–7PM'];
 
-  bool get isRent => _mode == 'rent';
-  int get monthly => _plans[_plan][1] as int;
 
   @override
   Widget build(BuildContext context) {
@@ -551,7 +558,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Widget _addressTile(AddressModel a) {
     final sel = _selectedAddress?.id == a.id;
     return GestureDetector(
-      onTap: () => setState(() { _selectedAddress = a; _errors.remove('address'); }),
+      onTap: () => _selectAddress(a),
       child: Container(
         width: double.infinity,
         margin: const EdgeInsets.only(bottom: 10),
@@ -1059,21 +1066,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ]),
             )),
         const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1, color: AppColors.line)),
-        if (!isRent) ...[
-          _r('Subtotal', money(s.subtotal)),
-          _r('Delivery', 'FREE', green: true),
-          _r('Installation', 'FREE', green: true),
-          _r('VAT (20%)', money(s.vat)),
-          const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, color: AppColors.line)),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Total', style: AppText.h3), Text(money(s.total), style: AppText.h2.copyWith(fontSize: 20))]),
-        ] else ...[
-          _r('Monthly Fee', '£$monthly / month'),
-          _r('Delivery', 'FREE', green: true),
-          _r('Installation', 'FREE', green: true),
-          _r('VAT (20%)', 'Included'),
-          const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, color: AppColors.line)),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Total', style: AppText.h3), Text('£$monthly / mo', style: AppText.h2.copyWith(fontSize: 20))]),
-        ],
+        _r('Subtotal', moneyText(s.subtotal, AppText.label.copyWith(color: AppColors.ink900))),
+        _r('Delivery', Text('FREE', style: AppText.label.copyWith(color: AppColors.green600))),
+        _r('Installation', Text('FREE', style: AppText.label.copyWith(color: AppColors.green600))),
+        _r('VAT (${_fmtPercent(s.vatRatePercent)}%)', moneyText(s.vat, AppText.label.copyWith(color: AppColors.ink900))),
+        const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, color: AppColors.line)),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Total', style: AppText.h3), moneyText(s.total, AppText.h2.copyWith(fontSize: 20), symbolSize: 15)]),
         const SizedBox(height: 16),
         if (onReview) ...[
           PwtButton(
@@ -1104,12 +1102,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  Widget _r(String k, String v, {bool green = false}) => Padding(
+  Widget _r(String k, Widget v) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(k, style: AppText.body.copyWith(color: AppColors.ink600)), Text(v, style: AppText.label.copyWith(color: green ? AppColors.green600 : AppColors.ink900))]),
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(k, style: AppText.body.copyWith(color: AppColors.ink600)), v]),
       );
 
 }
+
+String _fmtPercent(num v) => v % 1 == 0 ? v.toInt().toString() : v.toString();
 
 String _checkoutFlagFromCode(String? code) {
   if (code == null || code.length != 2) return '🌐';

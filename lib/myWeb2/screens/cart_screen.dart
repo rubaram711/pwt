@@ -110,10 +110,7 @@ class _CartScreenState extends State<CartScreen> {
           ),
         ])),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text(
-            isRent ? '${money(l.lineTotal)}/mo' : money(l.lineTotal),
-            style: AppText.price,
-          ),
+          moneyText(l.lineTotal, AppText.price, symbolSize: 15, suffix: isRent ? '/mo' : ''),
           const SizedBox(height: 10),
           Row(children: [
             _qtyBtn(Icons.remove, () => s.decQty(l)),
@@ -147,17 +144,17 @@ class _CartScreenState extends State<CartScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Order Summary', style: AppText.h2.copyWith(fontSize: 19)),
         const SizedBox(height: 16),
-        _row('Subtotal', money(s.subtotal)),
-        _row('Delivery', 'Free', muted: true),
-        _row('Installation', 'Free', muted: true),
-        _row('VAT (20%)', money(s.vat)),
+        _row('Subtotal', moneyText(s.subtotal, AppText.label.copyWith(color: AppColors.ink900))),
+        _row('Delivery', Text('Free', style: AppText.label.copyWith(color: AppColors.green600)), muted: true),
+        _row('Installation', Text('Free', style: AppText.label.copyWith(color: AppColors.green600)), muted: true),
+        _row('VAT (${_fmtPercent(s.vatRatePercent)}%)', moneyText(s.vat, AppText.label.copyWith(color: AppColors.ink900))),
         if (hasPromo)
-          _row('Promo (${s.appliedPromoCode})', '- ${money(s.promoDiscount)}', discount: true),
+          _row('Promo (${s.appliedPromoCode})', moneyText(s.promoDiscount, AppText.label.copyWith(color: AppColors.discount), prefix: '- ')),
         const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppColors.line)),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text('Total', style: AppText.h3),
           Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-            Text(money(s.total), style: AppText.h2.copyWith(fontSize: 22)),
+            moneyText(s.total, AppText.h2.copyWith(fontSize: 22), symbolSize: 16),
             const SizedBox(width: 6),
             Text('incl. VAT', style: AppText.muted),
           ]),
@@ -241,11 +238,11 @@ class _CartScreenState extends State<CartScreen> {
         Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(children: [Icon(ic, size: 15, color: AppColors.ink400), const SizedBox(width: 9), Text(t, style: AppText.muted)])),
       ];
 
-  Widget _row(String k, String v, {bool muted = false, bool discount = false}) => Padding(
+  Widget _row(String k, Widget v, {bool muted = false}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 5),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text(k, style: AppText.body.copyWith(color: muted ? AppColors.ink400 : AppColors.ink700)),
-          Text(v, style: AppText.label.copyWith(color: discount ? AppColors.discount : muted ? AppColors.green600 : AppColors.ink900)),
+          v,
         ]),
       );
 
@@ -266,3 +263,5 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 }
+
+String _fmtPercent(num v) => v % 1 == 0 ? v.toInt().toString() : v.toString();

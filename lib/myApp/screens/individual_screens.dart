@@ -1704,7 +1704,7 @@ class _IndividualOrdersScreenState extends State<IndividualOrdersScreen> {
   String? _errorMsg;
 
   static const _statusFilters = <String?>[null, 'pending', 'completed', 'cancelled'];
-  static const _statusFilterLabels = ['All', 'Pending', 'Completed', 'Cancelled'];
+  static const _statusFilterLabels = ['All', 'Ongoing', 'Completed', 'Cancelled'];
   static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   /// Called by the shell when this tab is reselected — re-fetches only if
