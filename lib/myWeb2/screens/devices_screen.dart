@@ -76,7 +76,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
     final res = await getProducts(page: 1);
     if (!mounted) return;
     if (res.success && res.data != null) {
-      setState(() => _teaserProducts = res.data!.items.take(3).toList());
+      // Quote-only products can't be bought or rented — only a company
+      // account can request a quotation for them.
+      setState(() => _teaserProducts = res.data!.items.where((p) => p.isQuoteOnly != true).take(3).toList());
     }
   }
 

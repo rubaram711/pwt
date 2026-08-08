@@ -8,10 +8,12 @@ import '../../const/urls.dart';
 Future<ApiResponse<PaymentModel>> initiatePayment({
   required int orderId,
   required String paymentMethod,
+  int? paymentCardId,
+  String? paymentMethodId,
   String? idempotencyKey,
 }) async {
   print('[initiatePayment] POST $kPaymentsInitiateUrl');
-  print('[initiatePayment] body: orderId=$orderId paymentMethod=$paymentMethod idempotencyKey=$idempotencyKey');
+  print('[initiatePayment] body: orderId=$orderId paymentMethod=$paymentMethod paymentCardId=$paymentCardId paymentMethodId=$paymentMethodId idempotencyKey=$idempotencyKey');
 
   final dio.Dio di = AppState.instance.dioService.dio;
 
@@ -23,7 +25,9 @@ Future<ApiResponse<PaymentModel>> initiatePayment({
           data: {
             'order_id': orderId,
             'payment_method': paymentMethod,
-            'mode':"payment_intent"
+            'mode':"payment_intent",
+            if (paymentCardId != null) 'payment_card_id': paymentCardId,
+            if (paymentMethodId != null) 'payment_method_id': paymentMethodId,
           },
           options: idempotencyKey != null
               ? dio.Options(headers: {'Idempotency-Key': idempotencyKey})

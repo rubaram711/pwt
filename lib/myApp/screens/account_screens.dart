@@ -1,7 +1,7 @@
 // Account area: Profile (individual + company), Settings, Invoices, Orders.
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter_stripe/flutter_stripe.dart' as stripe;
 import 'package:provider/provider.dart';
 import '../core/theme.dart';
 import '../core/tokens.dart';
@@ -92,32 +92,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _addCardSheet(Map<String, String> s) {
     final holderCtrl = TextEditingController();
-    final numCtrl    = TextEditingController();
-    final monthCtrl  = TextEditingController();
-    final yearCtrl   = TextEditingController();
-    final cvcCtrl    = TextEditingController();
     bool def = false;
-    String? holderErr, numErr, monthErr, yearErr, cvcErr;
-
-    bool validate(void Function(void Function()) set) {
-      final digits     = numCtrl.text.replaceAll(RegExp(r'\D'), '');
-      final monthVal   = monthCtrl.text.trim();
-      final yearVal    = yearCtrl.text.trim();
-      final cvcVal     = cvcCtrl.text.trim();
-
-      final hErr = holderCtrl.text.trim().isEmpty ? 'Cardholder name is required' : null;
-      final nErr = digits.isEmpty
-          ? 'Card number is required'
-          : digits.length != 16
-              ? 'Enter a valid 16-digit card number'
-              : null;
-      final mErr = !RegExp(r'^\d{2}$').hasMatch(monthVal) ? 'Must be 2 digits (e.g. 08)' : null;
-      final yErr = !RegExp(r'^\d{4}$').hasMatch(yearVal)  ? 'Must be 4 digits (e.g. 2027)' : null;
-      final cErr = !RegExp(r'^\d{3,4}$').hasMatch(cvcVal) ? '3–4 digits' : null;
-
-      set(() { holderErr = hErr; numErr = nErr; monthErr = mErr; yearErr = yErr; cvcErr = cErr; });
-      return hErr == null && nErr == null && mErr == null && yErr == null && cErr == null;
-    }
+    bool cardComplete = false;
+    bool cardTouched = false;
+    bool submitting = false;
+    String? holderErr;
 
     showModalBottomSheet(
       context: context,
@@ -139,52 +118,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 12),
                 PwtField(label: s['cardholderName']!, controller: holderCtrl, onChanged: (_) => set(() => holderErr = null)),
                 if (holderErr != null) _fieldError(holderErr!),
-                const SizedBox(height: 10),
-                PwtField(
-                  label: s['cardNumber']!,
-                  controller: numCtrl,
-                  forceLtr: true,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [_CardNumberFormatter()],
-                  onChanged: (_) => set(() => numErr = null),
+                const SizedBox(height: 14),
+                Text(s['cardNumber'] ?? 'Card details', style: PwtType.label()),
+                const SizedBox(height: 7),
+                // Card number/expiry/CVV are typed straight into Stripe's
+                // own native card field — those digits go directly to
+                // Stripe and never pass through our Flutter code or backend.
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  decoration: BoxDecoration(
+                    color: PwtColors.surface,
+                    borderRadius: BorderRadius.circular(PwtRadius.card),
+                    border: Border.all(color: cardTouched && !cardComplete ? PwtColors.error : PwtColors.hairline),
+                  ),
+                  child: stripe.CardField(
+                    enablePostalCode: false,
+                    style: PwtType.body(color: PwtColors.textPri).copyWith(fontSize: 14.5),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(vertical: 13, horizontal: 8),
+                    ),
+                    onCardChanged: (details) => set(() => cardComplete = details?.complete ?? false),
+                  ),
                 ),
-                if (numErr != null) _fieldError(numErr!),
-                const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    PwtField(
-                      label: 'Month (MM)',
-                      controller: monthCtrl,
-                      forceLtr: true,
-                      keyboardType: TextInputType.number,
-                      onChanged: (_) => set(() => monthErr = null),
-                    ),
-                    if (monthErr != null) _fieldError(monthErr!),
-                  ])),
-                  const SizedBox(width: 10),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    PwtField(
-                      label: 'Year (YYYY)',
-                      controller: yearCtrl,
-                      forceLtr: true,
-                      keyboardType: TextInputType.number,
-                      onChanged: (_) => set(() => yearErr = null),
-                    ),
-                    if (yearErr != null) _fieldError(yearErr!),
-                  ])),
-                  const SizedBox(width: 10),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    PwtField(
-                      label: 'CVC',
-                      controller: cvcCtrl,
-                      forceLtr: true,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [LengthLimitingTextInputFormatter(4)],
-                      onChanged: (_) => set(() => cvcErr = null),
-                    ),
-                    if (cvcErr != null) _fieldError(cvcErr!),
-                  ])),
-                ]),
+                if (cardTouched && !cardComplete) _fieldError('Enter your card details to continue.'),
                 const SizedBox(height: 14),
                 GestureDetector(
                   onTap: () => set(() => def = !def),
@@ -199,27 +157,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Expanded(child: PwtButton(label: s['cancel']!, variant: PwtButtonVariant.secondary, full: true, onPressed: () => Navigator.pop(ctx))),
                   const SizedBox(width: 10),
                   Expanded(child: PwtButton(
-                    label: s['addCardDetails'] ?? 'Add Card',
+                    label: submitting ? 'Saving…' : (s['addCardDetails'] ?? 'Add Card'),
                     full: true,
-                    onPressed: () {
-                      if (!validate(set)) return;
-                      Navigator.pop(ctx);
-                      final digits   = numCtrl.text.replaceAll(RegExp(r'\D'), '');
-                      final lastFour = digits.substring(digits.length - 4);
-                      final brand    = digits.startsWith('4') ? 'Visa' : digits.startsWith('5') ? 'Mastercard' : 'Card';
-                      createPaymentCard(
-                        brand: brand,
-                        lastFour: lastFour,
-                        cardNumberHash: digits,
-                        expiryMonth: monthCtrl.text.trim(),
-                        expiryYear: yearCtrl.text.trim(),
-                        cardholderName: holderCtrl.text.trim(),
-                        cvc: cvcCtrl.text.trim(),
-                        isDefault: def,
-                      ).then((res) {
+                    disabled: submitting,
+                    onPressed: submitting ? null : () async {
+                      final hErr = holderCtrl.text.trim().isEmpty ? 'Cardholder name is required' : null;
+                      set(() => holderErr = hErr);
+                      if (hErr != null) return;
+                      if (!cardComplete) { set(() => cardTouched = true); return; }
+                      set(() => submitting = true);
+                      try {
+                        final pm = await stripe.Stripe.instance.createPaymentMethod(
+                          params: stripe.PaymentMethodParams.card(
+                            paymentMethodData: stripe.PaymentMethodData(
+                              billingDetails: stripe.BillingDetails(name: holderCtrl.text.trim()),
+                            ),
+                          ),
+                        );
+                        // Stripe's own response — console only, never shown to the user.
+                        debugPrint('[Stripe createPaymentMethod] id=${pm.id} brand=${pm.card.brand} last4=${pm.card.last4} exp=${pm.card.expMonth}/${pm.card.expYear}');
+                        final saveRes = await createPaymentCard(paymentMethodId: pm.id, isDefault: def);
                         if (!mounted) return;
-                        if (res.success) { _loadCards(); } else { _toast(res.message ?? 'Failed to add card.'); }
-                      });
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (saveRes.success) { _loadCards(); } else { _toast(saveRes.message ?? 'Failed to add card.'); }
+                      } on stripe.StripeException catch (e) {
+                        if (!mounted) return;
+                        set(() => submitting = false);
+                        _toast(e.error.localizedMessage ?? e.error.message ?? 'Failed to save card.');
+                      } catch (_) {
+                        if (!mounted) return;
+                        set(() => submitting = false);
+                        _toast('Failed to save card.');
+                      }
                     },
                   )),
                 ]),
@@ -1826,22 +1795,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
               ],
             ),
     );
-  }
-}
-
-// Groups card digits as "XXXX XXXX XXXX XXXX", capped at 16 digits.
-class _CardNumberFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(TextEditingValue old, TextEditingValue next) {
-    final digits = next.text.replaceAll(RegExp(r'\D'), '');
-    if (digits.length > 16) return old;
-    final buffer = StringBuffer();
-    for (int i = 0; i < digits.length; i++) {
-      if (i > 0 && i % 4 == 0) buffer.write(' ');
-      buffer.write(digits[i]);
-    }
-    final text = buffer.toString();
-    return TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
   }
 }
 

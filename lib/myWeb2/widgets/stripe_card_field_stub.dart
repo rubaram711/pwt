@@ -26,6 +26,14 @@ class StripeCardFieldsState extends State<StripeCardFields> {
     throw UnsupportedError('StripeCardFields is only available on Flutter Web.');
   }
 
+  Future<StripePaymentMethodResult> createPaymentMethod({String? cardholderName}) {
+    throw UnsupportedError('StripeCardFields is only available on Flutter Web.');
+  }
+
+  Future<StripeCardResult> confirmPaymentWithMethodId(String clientSecret, String paymentMethodId) {
+    throw UnsupportedError('StripeCardFields is only available on Flutter Web.');
+  }
+
   @override
   Widget build(BuildContext context) {
     throw UnsupportedError('StripeCardFields is only available on Flutter Web.');

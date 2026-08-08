@@ -3,6 +3,7 @@ import '../theme/tokens.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import '../widgets/site_chrome.dart';
+import '../state/app_state.dart';
 import '../../Models/Products/products_model.dart';
 import '../../Models/Pagination/pagination_model.dart';
 import '../../Backend/Products/get_products.dart';
@@ -43,7 +44,15 @@ class _ShopScreenState extends State<ShopScreen> {
     if (!mounted) return;
     if (result.success && result.data != null) {
       setState(() {
-        _products = result.data!.items;
+        // Quote-only products (is_quote_only) can't be bought or rented —
+        // only a company account can request a quotation for them, so a
+        // signed-in individual never sees them. Guests still see them (with
+        // buy/rent/add-to-cart hidden on the product page) since they
+        // haven't committed to an account type yet.
+        final showQuoteOnly = AppState.instance.user == null || AppState.instance.isCompany;
+        _products = showQuoteOnly
+            ? result.data!.items
+            : result.data!.items.where((p) => p.isQuoteOnly != true).toList();
         _pagination = result.data!.pagination;
         _loading = false;
       });
@@ -291,6 +300,7 @@ class _ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isQuoteOnly = p.isQuoteOnly == true;
     final price = double.tryParse(p.startingPrice?.amount ?? '') ?? 0;
     final oldPrice = p.originalPrice != null ? double.tryParse(p.originalPrice!) : null;
     final currency = p.startingPrice?.currency ?? '';
@@ -331,16 +341,19 @@ class _ProductCard extends StatelessWidget {
               const SizedBox(height: 2),
               Text(p.shortDescription ?? '', style: AppText.muted, maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 10),
-              Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                Text(
-                  '$currency ${price.toStringAsFixed(0)}',
-                  style: AppText.price.copyWith(color: isDiscounted ? AppColors.discount : AppColors.ink900),
-                ),
-                if (isDiscounted) ...[
-                  const SizedBox(width: 8),
-                  Text('$currency ${oldPrice!.toStringAsFixed(0)}', style: AppText.muted.copyWith(decoration: TextDecoration.lineThrough)),
-                ],
-              ]),
+              if (isQuoteOnly)
+                Text('Price on request', style: AppText.label.copyWith(color: AppColors.ink500))
+              else
+                Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+                  Text(
+                    '$currency ${price.toStringAsFixed(0)}',
+                    style: AppText.price.copyWith(color: isDiscounted ? AppColors.discount : AppColors.ink900),
+                  ),
+                  if (isDiscounted) ...[
+                    const SizedBox(width: 8),
+                    Text('$currency ${oldPrice!.toStringAsFixed(0)}', style: AppText.muted.copyWith(decoration: TextDecoration.lineThrough)),
+                  ],
+                ]),
               const SizedBox(height: 12),
               PwtButton('View details', variant: PwtBtn.ghost, fullWidth: true,
                   onPressed: () => Navigator.of(context).pushNamed('/product', arguments: p)),

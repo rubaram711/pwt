@@ -70,6 +70,24 @@ class StripeCardFieldsState extends State<StripeCardFields> {
     return StripeJs.init(widget.publishableKey).confirmCardPayment(clientSecret, card);
   }
 
+  /// Tokenizes the currently entered card into a Stripe PaymentMethod
+  /// (`pm_xxxxx`) — for saving a card, as opposed to [confirmPayment] which
+  /// charges one. No amount/PaymentIntent is involved.
+  Future<StripePaymentMethodResult> createPaymentMethod({String? cardholderName}) {
+    final card = _card;
+    if (card == null) {
+      return Future.value(StripePaymentMethodResult(success: false, errorMessage: 'Card field not ready yet. Please try again.'));
+    }
+    return StripeJs.init(widget.publishableKey).createPaymentMethod(card, cardholderName: cardholderName);
+  }
+
+  /// Confirms [clientSecret] using a PaymentMethod already tokenized via
+  /// [createPaymentMethod] — the card details entered in this field aren't
+  /// re-read here, only the given [paymentMethodId] is used.
+  Future<StripeCardResult> confirmPaymentWithMethodId(String clientSecret, String paymentMethodId) {
+    return StripeJs.init(widget.publishableKey).confirmCardPaymentWithMethodId(clientSecret, paymentMethodId);
+  }
+
   @override
   void dispose() {
     final card = _card;

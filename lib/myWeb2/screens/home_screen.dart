@@ -4,6 +4,7 @@ import '../theme/app_theme.dart';
 import '../widgets/site_chrome.dart';
 import '../widgets/common.dart';
 import '../widgets/floating_trial_badge.dart';
+import '../state/app_state.dart';
 import '../../Models/Products/products_model.dart';
 import '../../Backend/Products/get_filtered_products.dart';
 
@@ -371,7 +372,14 @@ class _TopProductsState extends State<_TopProducts> {
       setState(() {
         _loading = false;
         if (result.success && result.data != null) {
-          _products = result.data!.items;
+          // Quote-only products can't be bought or rented — only a company
+          // account can request a quotation for them. Guests still see them
+          // (with buy/rent/cart hidden on the product page) since they
+          // haven't committed to an account type yet.
+          final showQuoteOnly = AppState.instance.user == null || AppState.instance.isCompany;
+          _products = showQuoteOnly
+              ? result.data!.items
+              : result.data!.items.where((p) => p.isQuoteOnly != true).toList();
         } else {
           _error = result.message ?? 'Failed to load products.';
         }

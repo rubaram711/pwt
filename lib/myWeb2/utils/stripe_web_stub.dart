@@ -12,6 +12,27 @@ class StripeCardResult {
   final String? paymentIntentStatus;
 }
 
+class StripePaymentMethodResult {
+  StripePaymentMethodResult({
+    required this.success,
+    this.errorMessage,
+    this.paymentMethodId,
+    this.brand,
+    this.last4,
+    this.expMonth,
+    this.expYear,
+    this.rawJson,
+  });
+  final bool success;
+  final String? errorMessage;
+  final String? paymentMethodId;
+  final String? brand;
+  final String? last4;
+  final String? expMonth;
+  final String? expYear;
+  final String? rawJson;
+}
+
 class StripeJs {
   StripeJs._();
 
@@ -40,6 +61,14 @@ class StripeJs {
   }
 
   Future<StripeCardResult> confirmCardPayment(String clientSecret, dynamic card) {
+    throw UnsupportedError('StripeJs is only available on Flutter Web.');
+  }
+
+  Future<StripeCardResult> confirmCardPaymentWithMethodId(String clientSecret, String paymentMethodId) {
+    throw UnsupportedError('StripeJs is only available on Flutter Web.');
+  }
+
+  Future<StripePaymentMethodResult> createPaymentMethod(dynamic card, {String? cardholderName}) {
     throw UnsupportedError('StripeJs is only available on Flutter Web.');
   }
 }

@@ -26,7 +26,8 @@
       "Read(//c//**)",
       "Read(//c/Users/infobank/**)",
       "Bash(find /c -iname \"flutter_stripe-*\" -type d)",
-      "Bash(flutter build *)"
+      "Bash(flutter build *)",
+      "Bash(xargs -I{} basename {})"
     ]
   }
 }

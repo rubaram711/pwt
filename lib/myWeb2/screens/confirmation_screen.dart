@@ -113,7 +113,9 @@ class ConfirmationScreen extends StatelessWidget {
           ),
           const SizedBox(height: 22),
           Wrap(spacing: 12, runSpacing: 12, alignment: WrapAlignment.center, children: [
-            PwtButton('Track Order', icon: Icons.location_on_outlined, onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil(_dashRoute, (r) => false)),
+            PwtButton('Track Order', icon: Icons.location_on_outlined, onPressed: () => order != null
+                ? Navigator.of(context).pushNamedAndRemoveUntil('/orderDetail', (r) => false, arguments: order.id)
+                : Navigator.of(context).pushNamedAndRemoveUntil(_dashRoute, (r) => false)),
             PwtButton('Go to Dashboard', variant: PwtBtn.outline, icon: Icons.grid_view_rounded, onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil(_dashRoute, (r) => false)),
             PwtButton('Continue Shopping', variant: PwtBtn.ghost, onPressed: () => Navigator.of(context).pushNamed('/shop')),
           ]),

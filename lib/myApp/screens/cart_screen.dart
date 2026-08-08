@@ -1,7 +1,6 @@
 ﻿// Cart, checkout and success flows.
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PlatformException;
@@ -633,28 +632,36 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     final promo = _promoCtrl.text.trim().isEmpty ? null : _promoCtrl.text.trim();
     final notes = _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim();
-    // A new card is captured entirely by Stripe's native PaymentSheet on the
-    // processing screen next — its real digits never touch our backend.
-    // /orders still requires card_number/card_expiry to be present for
-    // payment_method=card, so we send inert placeholders here; the actual
-    // charge is authorized purely via Stripe's client_secret + PaymentSheet,
-    // never from these fields.
     final usingSavedCard = _paymentMethod == 'card' && !_needsNewCard && _selectedCardId != null;
-    String? cardNumber;
-    String? cardExpiry;
-    String? cardCvc;
-    if (_paymentMethod == 'card') {
-      if (usingSavedCard) {
-        final saved = _cards.where((c) => c.id == _selectedCardId).firstOrNull;
-        if (saved != null) {
-          cardNumber = saved.cardNumberHash ?? saved.lastFour;
-          cardExpiry = '${saved.expiryMonth}/${saved.expiryYear}';
-          cardCvc    = saved.cvc;
-        }
-      } else {
-        cardNumber = '4242424242424242';
-        cardExpiry = '12/99';
-        cardCvc    = '000';
+
+    // /orders now takes a real stripe_payment_method_id — never raw card
+    // digits. A saved card already has one; a new card must be tokenized
+    // with Stripe right here, before the order is placed, against the
+    // still-mounted CardField below.
+    String? stripePaymentMethodId;
+    if (usingSavedCard) {
+      stripePaymentMethodId = _cards.where((c) => c.id == _selectedCardId).firstOrNull?.stripePaymentMethodId;
+    } else if (_paymentMethod == 'card') {
+      try {
+        final pm = await stripe.Stripe.instance.createPaymentMethod(
+          params: stripe.PaymentMethodParams.card(
+            paymentMethodData: stripe.PaymentMethodData(
+              billingDetails: stripe.BillingDetails(name: user?.name, email: user?.email, phone: user?.phone),
+            ),
+          ),
+        );
+        stripePaymentMethodId = pm.id;
+      } on stripe.StripeException catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _submitting = false;
+          _error = e.error.localizedMessage ?? e.error.message ?? 'Failed to process card details. Please try again.';
+        });
+        return;
+      } catch (_) {
+        if (!mounted) return;
+        setState(() { _submitting = false; _error = 'Failed to process card details. Please try again.'; });
+        return;
       }
     }
 
@@ -668,9 +675,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       deliveryTimeSlot: _timeSlot,
       term: term,
       paymentMethod: _paymentMethod,
-      cardNumber: cardNumber,
-      cardExpiry: cardExpiry,
-      cardCvc:    cardCvc,
+      stripePaymentMethodId: stripePaymentMethodId,
       promoCode: promo,
       notes: notes,
     );
@@ -690,6 +695,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final payRes = await initiatePayment(
       orderId: order.id,
       paymentMethod: _paymentMethod,
+      paymentCardId: usingSavedCard ? _selectedCardId : null,
+      paymentMethodId: usingSavedCard ? null : stripePaymentMethodId,
     );
 
     if (!mounted) return;
@@ -726,111 +733,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     debugPrint('[Checkout._submit] paymentMethod=$_paymentMethod usingSavedCard=$usingSavedCard clientSecret=${clientSecret.isNotEmpty ? "present" : "MISSING"}');
 
-    if (_paymentMethod == 'card' && _needsNewCard && clientSecret.isNotEmpty) {
-      // New card: confirm the PaymentIntent right here against the still-
-      // mounted Stripe CardField — no separate screen, no browser redirect.
-      setState(() { _submitting = false; _confirmingCard = true; });
-
-      final paymentIntentId = _paymentIntentIdFromClientSecret(clientSecret);
-      final billingDetails = stripe.BillingDetails(
-        name: user?.name,
-        email: user?.email,
-        phone: user?.phone,
-      );
-
-      _logStep('Pre-confirm: clientSecret parsed / payment method resolved', {
-        'clientSecret (full, unmasked)': clientSecret,
-        'paymentIntentId (extracted from clientSecret)': paymentIntentId,
-        'paymentMethodId': 'none — no pre-created PaymentMethod is used; card details come inline from the mounted CardField at confirm time',
-        'paymentMethodParams.type': 'card (PaymentMethodParams.card)',
-        'billingDetails.name': user?.name,
-        'billingDetails.email': user?.email,
-        'billingDetails.phone': user?.phone,
-      });
-
-      _logStep('About to call Stripe.instance.confirmPayment()', {
-        'paymentIntentClientSecret (full, unmasked)': clientSecret,
-        'data.runtimeType': 'PaymentMethodParams.card',
-      });
-
-      try {
-        _logStep('confirmPayment() call started');
-        final confirmedIntent = await stripe.Stripe.instance.confirmPayment(
-          paymentIntentClientSecret: clientSecret,
-          data: stripe.PaymentMethodParams.card(
-            paymentMethodData: stripe.PaymentMethodData(
-              billingDetails: billingDetails,
-            ),
-          ),
-        );
-        _logStep('confirmPayment() returned — SUCCESS', {
-          'PaymentIntent.id': confirmedIntent.id,
-          'PaymentIntent.status': confirmedIntent.status,
-          'PaymentIntent.amount': confirmedIntent.amount,
-          'PaymentIntent.currency': confirmedIntent.currency,
-          'PaymentIntent.clientSecret': confirmedIntent.clientSecret,
-          'PaymentIntent.paymentMethodId': confirmedIntent.paymentMethodId,
-          'PaymentIntent.livemode': confirmedIntent.livemode,
-          'PaymentIntent.captureMethod': confirmedIntent.captureMethod,
-          'PaymentIntent.confirmationMethod': confirmedIntent.confirmationMethod,
-        });
-        debugPrint('[Stripe confirm raw response] ${jsonEncode(confirmedIntent.toJson())}');
-
-        if (!mounted) return;
-        setState(() => _confirmingCard = false);
-        context.read<CartState>().clearBackend();
-        if (!mounted) return;
-        _logStep('Navigating to OrderSuccessScreen — payment confirmed, flow complete');
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => OrderSuccessScreen(order: order, subtotal: widget.subtotal, vat: _vat)),
-        );
-      } on stripe.StripeException catch (e, st) {
-        _logStep('confirmPayment() threw StripeException — flow stopped INSIDE confirm', {
-          'error.code': e.error.code,
-          'error.type': e.error.type,
-          'error.message': e.error.message,
-          'error.localizedMessage': e.error.localizedMessage,
-          'error.stripeErrorCode': e.error.stripeErrorCode,
-          'error.declineCode': e.error.declineCode,
-        });
-        debugPrint('[Checkout._submit] StripeException stack trace:\n$st');
-        debugPrint('[Checkout._submit] StripeException: code=${e.error.code} message=${e.error.message} localized=${e.error.localizedMessage}');
-        try {
-          debugPrint('[Stripe confirm raw error response] ${jsonEncode(e.error.toJson())}');
-        } catch (_) {}
-        if (!mounted) return;
-        final canceled = e.error.code == stripe.FailureCode.Canceled;
-        setState(() {
-          _confirmingCard = false;
-          _error = canceled ? 'Payment canceled.' : (e.error.localizedMessage ?? e.error.message ?? 'Payment failed. Please try again.');
-        });
-      } on PlatformException catch (e, st) {
-        _logStep('confirmPayment() threw PlatformException — flow stopped INSIDE confirm (method-channel level)', {
-          'code': e.code,
-          'message': e.message,
-          'details': e.details,
-        });
-        debugPrint('[Checkout._submit] PlatformException stack trace:\n$st');
-        if (!mounted) return;
-        setState(() { _confirmingCard = false; _error = 'Payment failed. Please try again.'; });
-      } catch (e, st) {
-        _logStep('confirmPayment() threw a generic exception — flow stopped INSIDE confirm', {
-          'error': e.toString(),
-          'runtimeType': e.runtimeType.toString(),
-        });
-        debugPrint('[Checkout._submit] Generic exception stack trace:\n$st');
-        if (!mounted) return;
-        setState(() { _confirmingCard = false; _error = 'Payment failed. Please try again.'; });
-      }
-      return;
-    }
-
     setState(() => _submitting = false);
 
-    // Saved card / Apple Pay / Google Pay: no inline confirmation path wired
-    // up yet — fall back to the hosted-checkout redirect + poll flow, same
-    // as myWeb2 does for these methods.
+    // Every payment method — new card, saved card, Apple Pay, Google Pay —
+    // now finishes the same way: the backend already has the payment
+    // method (stripe_payment_method_id for a new card, payment_card_id for
+    // a saved one), so the client just falls back to the hosted-checkout
+    // redirect + poll flow, same as myWeb2 does for these methods.
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => PaymentProcessingScreen(
@@ -1799,8 +1708,8 @@ class OrderSuccessScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
             child: Column(
               children: [
-                // PwtButton(label: s['viewOrder']!, full: true, onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst)),
-                // const SizedBox(height: 10),
+                PwtButton(label: s['trackOrder']!, full: true, onPressed: () => Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => OrderApiDetailScreen(id: order.id)))),
+                const SizedBox(height: 10),
                 PwtButton(label: s['continueShopping']!, variant: PwtButtonVariant.ghost, full: true, onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst)),
               ],
             ),

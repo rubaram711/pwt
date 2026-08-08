@@ -1019,7 +1019,14 @@ class ProductsScreenState extends State<ProductsScreen> {
     if (!mounted) return;
     setState(() {
       if (res.success && res.data != null) {
-        _products = append ? [..._products, ...res.data!.items] : res.data!.items;
+        // Quote-only products (is_quote_only) can't be bought or rented —
+        // only a company account can request a quotation for them, so a
+        // signed-in individual never sees them. Guests still see them (with
+        // buy/rent/cart hidden on the product page) since they haven't
+        // committed to an account type yet.
+        final isGuest = web.AppState.instance.user == null;
+        final items = isGuest ? res.data!.items : res.data!.items.where((p) => p.isQuoteOnly != true).toList();
+        _products = append ? [..._products, ...items] : items;
         _pagination = res.data!.pagination;
         _page = page;
         _error = null;
@@ -1373,7 +1380,7 @@ class _DevicesEmptyState extends State<_DevicesEmpty> {
     final res = await getProducts(page: 1);
     if (!mounted) return;
     if (res.success && res.data != null) {
-      setState(() => _teaserProducts = res.data!.items.take(3).toList());
+      setState(() => _teaserProducts = res.data!.items.where((p) => p.isQuoteOnly != true).take(3).toList());
     }
   }
 

@@ -17,6 +17,32 @@ class StripeCardResult {
   final String? paymentIntentStatus;
 }
 
+/// Result of tokenizing a card into a Stripe PaymentMethod (pm_xxxxx) via
+/// `stripe.createPaymentMethod` — no charge happens here, this only turns
+/// the card the user typed into Stripe's Card Element into a reusable
+/// token. [rawJson] is Stripe's own JSON response, kept as-is for
+/// inspection/logging.
+class StripePaymentMethodResult {
+  StripePaymentMethodResult({
+    required this.success,
+    this.errorMessage,
+    this.paymentMethodId,
+    this.brand,
+    this.last4,
+    this.expMonth,
+    this.expYear,
+    this.rawJson,
+  });
+  final bool success;
+  final String? errorMessage;
+  final String? paymentMethodId;
+  final String? brand;
+  final String? last4;
+  final String? expMonth;
+  final String? expYear;
+  final String? rawJson;
+}
+
 const _kElementStyle = {
   'style': {
     'base': {
@@ -101,12 +127,24 @@ class StripeJs {
     ]);
   }
 
-  /// Confirms [clientSecret] using the given card Element.
+  /// Confirms [clientSecret] using the given card Element — tokenizes and
+  /// charges the entered card in one step.
   Future<StripeCardResult> confirmCardPayment(String clientSecret, js.JsObject card) {
-    final completer = Completer<StripeCardResult>();
-    final options = js.JsObject.jsify({
+    return _confirmCardPayment(clientSecret, {
       'payment_method': {'card': card},
     });
+  }
+
+  /// Confirms [clientSecret] using an already-tokenized PaymentMethod
+  /// (`pm_xxxxx`) — for a card tokenized up front via [createPaymentMethod]
+  /// (and already handed to the backend), so nothing is re-tokenized here.
+  Future<StripeCardResult> confirmCardPaymentWithMethodId(String clientSecret, String paymentMethodId) {
+    return _confirmCardPayment(clientSecret, {'payment_method': paymentMethodId});
+  }
+
+  Future<StripeCardResult> _confirmCardPayment(String clientSecret, Map<String, dynamic> optionsMap) {
+    final completer = Completer<StripeCardResult>();
+    final options = js.JsObject.jsify(optionsMap);
     final promise = _stripe.callMethod('confirmCardPayment', [clientSecret, options]) as js.JsObject;
     promise.callMethod('then', [
       js.allowInterop((dynamic result) {
@@ -129,6 +167,51 @@ class StripeJs {
     promise.callMethod('catch', [
       js.allowInterop((dynamic _) {
         completer.complete(StripeCardResult(success: false, errorMessage: 'Payment failed. Please try again.'));
+      }),
+    ]);
+    return completer.future;
+  }
+
+  /// Tokenizes the given card Element into a Stripe PaymentMethod
+  /// (`pm_xxxxx`) via `stripe.createPaymentMethod` — nothing is charged
+  /// here. The full 16-digit number/CVV/expiry never leave Stripe's own
+  /// iframe; this only asks Stripe for the reusable token + safe-to-store
+  /// display metadata (brand/last4/expiry) for that card.
+  Future<StripePaymentMethodResult> createPaymentMethod(js.JsObject card, {String? cardholderName}) {
+    final completer = Completer<StripePaymentMethodResult>();
+    final options = js.JsObject.jsify({
+      'type': 'card',
+      'card': card,
+      if (cardholderName != null && cardholderName.isNotEmpty)
+        'billing_details': {'name': cardholderName},
+    });
+    final promise = _stripe.callMethod('createPaymentMethod', [options]) as js.JsObject;
+    promise.callMethod('then', [
+      js.allowInterop((dynamic result) {
+        final r = result as js.JsObject;
+        final error = r['error'];
+        if (error != null) {
+          final msg = (error as js.JsObject)['message'] as String?;
+          completer.complete(StripePaymentMethodResult(success: false, errorMessage: msg ?? 'Could not save this card. Please try again.'));
+          return;
+        }
+        final pm = r['paymentMethod'] as js.JsObject;
+        final cardInfo = pm['card'] as js.JsObject?;
+        final json = js.context['JSON'] as js.JsObject;
+        completer.complete(StripePaymentMethodResult(
+          success: true,
+          paymentMethodId: pm['id'] as String?,
+          brand: cardInfo?['brand'] as String?,
+          last4: cardInfo?['last4'] as String?,
+          expMonth: cardInfo?['exp_month']?.toString(),
+          expYear: cardInfo?['exp_year']?.toString(),
+          rawJson: json.callMethod('stringify', [pm, null, 2]) as String,
+        ));
+      }),
+    ]);
+    promise.callMethod('catch', [
+      js.allowInterop((dynamic _) {
+        completer.complete(StripePaymentMethodResult(success: false, errorMessage: 'Could not save this card. Please try again.'));
       }),
     ]);
     return completer.future;

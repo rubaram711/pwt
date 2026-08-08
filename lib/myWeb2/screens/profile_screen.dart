@@ -3,11 +3,12 @@ import 'dart:html' as html;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../utils/card_formatters.dart';
 import '../theme/tokens.dart';
 import '../theme/app_theme.dart';
 import '../state/app_state.dart';
 import '../widgets/common.dart';
+import '../widgets/stripe_card_field.dart';
+import '../../const/stripe_config.dart';
 import 'dashboard_shell.dart';
 import '../../Models/address_model.dart';
 import '../../Backend/Addresses/get_addresses.dart';
@@ -567,13 +568,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _cardSheet() {
-    final formKey    = GlobalKey<FormState>();
-    final holderCtrl = TextEditingController();
-    final numCtrl    = TextEditingController();
-    final monthCtrl  = TextEditingController();
-    final yearCtrl   = TextEditingController();
-    final cvcCtrl    = TextEditingController();
+    final formKey       = GlobalKey<FormState>();
+    final holderCtrl    = TextEditingController();
+    final stripeCardKey = GlobalKey<StripeCardFieldsState>();
     bool def = false;
+    bool cardComplete = false;
+    bool cardTouched = false;
+    String? cardError;
+    bool submitting = false;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -593,48 +595,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 12),
                 _formField('Cardholder name', holderCtrl, hint: 'John Doe'),
                 const SizedBox(height: 14),
-                _formField('Card number', numCtrl,
-                  hint: '1234 1234 1234 1234',
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [CardNumberFormatter()],
-                  validator: (v) {
-                    final digits = (v ?? '').replaceAll(RegExp(r'\D'), '');
-                    if (digits.isEmpty) return 'Card number is required';
-                    if (digits.length != 16) return 'Enter a valid 16-digit card number';
-                    return null;
-                  },
+                Text('Card details', style: AppText.label),
+                const SizedBox(height: 7),
+                // Card number/expiry/CVV are typed straight into Stripe's own
+                // embedded Card Element (an iframe Stripe controls) — those
+                // digits go directly to Stripe and never pass through our
+                // Flutter code or our backend.
+                StripeCardFields(
+                  key: stripeCardKey,
+                  publishableKey: kStripePublishableKey,
+                  onChange: (complete, error) => set(() { cardComplete = complete; cardError = error; }),
                 ),
-                const SizedBox(height: 14),
-                Row(children: [
-                  Expanded(child: _formField('Expiry month', monthCtrl,
-                    hint: '08',
-                    keyboardType: TextInputType.number,
-                    validator: (v) {
-                      if (!RegExp(r'^\d{2}$').hasMatch(v?.trim() ?? '')) return 'Must be 2 digits.';
-                      return null;
-                    },
-                  )),
-                  const SizedBox(width: 12),
-                  Expanded(child: _formField('Expiry year', yearCtrl,
-                    hint: '2027',
-                    keyboardType: TextInputType.number,
-                    validator: (v) {
-                      if (!RegExp(r'^\d{4}$').hasMatch(v?.trim() ?? '')) return 'Must be 4 digits.';
-                      return null;
-                    },
-                  )),
-                  const SizedBox(width: 12),
-                  Expanded(child: _formField('CVC', cvcCtrl,
-                    hint: '123',
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [LengthLimitingTextInputFormatter(4)],
-                    validator: (v) {
-                      final val = v?.trim() ?? '';
-                      if (!RegExp(r'^\d{3,4}$').hasMatch(val)) return '3–4 digits.';
-                      return null;
-                    },
-                  )),
-                ]),
+                if (cardError != null) ...[
+                  const SizedBox(height: 6),
+                  Text(cardError!, style: AppText.muted.copyWith(color: AppColors.danger, fontSize: 12)),
+                ] else if (cardTouched && !cardComplete) ...[
+                  const SizedBox(height: 6),
+                  Text('Enter your card details to continue.', style: AppText.muted.copyWith(color: AppColors.danger, fontSize: 12)),
+                ],
                 const SizedBox(height: 14),
                 Row(children: [
                   Expanded(child: Text('Set as default card', style: AppText.label)),
@@ -644,27 +622,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Row(children: [
                   Expanded(child: PwtButton('Cancel', variant: PwtBtn.outline, fullWidth: true, onPressed: () => Navigator.pop(ctx))),
                   const SizedBox(width: 12),
-                  Expanded(child: PwtButton('Add card', fullWidth: true, onPressed: () {
-                    if (!formKey.currentState!.validate()) return;
-                    Navigator.pop(ctx);
-                    final digits         = numCtrl.text.replaceAll(RegExp(r'\s'), '');
-                    final onlyDigits     = digits.replaceAll(RegExp(r'\D'), '');
-                    final lastFour       = onlyDigits.length >= 4 ? onlyDigits.substring(onlyDigits.length - 4) : onlyDigits;
-                    final brand          = onlyDigits.startsWith('4') ? 'Visa' : onlyDigits.startsWith('5') ? 'Mastercard' : 'Card';
-                    createPaymentCard(
-                      brand: brand,
-                      lastFour: lastFour,
-                      cardNumberHash: digits,
-                      expiryMonth: monthCtrl.text.trim(),
-                      expiryYear: yearCtrl.text.trim(),
-                      cardholderName: holderCtrl.text.trim(),
-                      cvc: cvcCtrl.text.trim(),
-                      isDefault: def,
-                    ).then((result) {
+                  Expanded(child: PwtButton(
+                    submitting ? 'Saving…' : 'Add card',
+                    fullWidth: true,
+                    onPressed: submitting ? null : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      if (!cardComplete) { set(() => cardTouched = true); return; }
+                      set(() => submitting = true);
+                      final result = await stripeCardKey.currentState!.createPaymentMethod(
+                        cardholderName: holderCtrl.text.trim(),
+                      );
                       if (!mounted) return;
-                      if (result.success) { _loadCards(); } else { _toast(result.message ?? 'Failed to add card.'); }
-                    });
-                  })),
+                      if (!result.success || result.paymentMethodId == null) {
+                        set(() => submitting = false);
+                        _toast(result.errorMessage ?? 'Failed to save card.');
+                        return;
+                      }
+                      // Stripe's own response — never shown to the user,
+                      // console only, for verifying the tokenization step.
+                      debugPrint('[Stripe createPaymentMethod] id=${result.paymentMethodId} brand=${result.brand} last4=${result.last4} exp=${result.expMonth}/${result.expYear}');
+                      debugPrint('[Stripe createPaymentMethod] full response:\n${result.rawJson}');
+                      final saveRes = await createPaymentCard(
+                        paymentMethodId: result.paymentMethodId!,
+                        isDefault: def,
+                      );
+                      if (!mounted) return;
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (saveRes.success) {
+                        _loadCards();
+                      } else {
+                        _toast(saveRes.message ?? 'Failed to save card.');
+                      }
+                    },
+                  )),
                 ]),
               ]),
             ),

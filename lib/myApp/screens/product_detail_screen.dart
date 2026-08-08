@@ -310,12 +310,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   const SizedBox(height: 16),
                 ],
                 if (_isGuest) ...[
-                  ModeTabs(
-                    mode: _guestView == 0 ? AccountKind.individual : AccountKind.business,
-                    onChanged: (k) => setState(() => _guestView = k == AccountKind.individual ? 0 : 1),
-                    individualLabel: s['individualBuyRent']!,
-                    businessLabel: s['companyRequestQuote']!,
-                  ),
+                  // Quote-only products have no individual buy/rent option at
+                  // all, so there's nothing to switch between — show a fixed
+                  // "Business" indicator instead of the individual/business
+                  // toggle.
+                  if (isQuoteOnly)
+                    _lockedBusinessChip(s)
+                  else
+                    ModeTabs(
+                      mode: _guestView == 0 ? AccountKind.individual : AccountKind.business,
+                      onChanged: (k) => setState(() => _guestView = k == AccountKind.individual ? 0 : 1),
+                      individualLabel: s['individualBuyRent']!,
+                      businessLabel: s['companyRequestQuote']!,
+                    ),
                   const SizedBox(height: 16),
                 ],
                 // price card / quote banner (company view always sees the
@@ -669,6 +676,39 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           //   ],
           // ),
         ],
+      ),
+    );
+  }
+
+  // Static, non-interactive stand-in for ModeTabs when a guest is viewing a
+  // quote-only product — there's only one possible view (business), so it's
+  // shown as a fixed pill rather than a switch with nothing to switch to.
+  Widget _lockedBusinessChip(Map<String, String> s) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: PwtColors.surface2,
+        borderRadius: BorderRadius.circular(PwtRadius.md),
+        border: Border.all(color: PwtColors.hairline),
+      ),
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(minHeight: 44),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        decoration: BoxDecoration(
+          color: PwtColors.surface,
+          borderRadius: BorderRadius.circular(11),
+          boxShadow: const [BoxShadow(color: Color(0x1F0F172A), blurRadius: 4, offset: Offset(0, 1))],
+        ),
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.apartment_outlined, size: 15, color: PwtColors.brand),
+            const SizedBox(width: 8),
+            Text(s['business']!, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: PwtColors.brand)),
+          ],
+        ),
       ),
     );
   }

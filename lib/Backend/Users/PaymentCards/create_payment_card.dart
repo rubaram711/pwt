@@ -5,14 +5,12 @@ import '../../../Models/payment_card_model.dart';
 import '../../../Models/api_response_model.dart';
 import '../../../Services/api_handler.dart';
 
+/// Saves a card that has already been tokenized by Stripe (a `pm_xxxxx`
+/// PaymentMethod). The backend attaches it to the user's Stripe Customer
+/// and returns the display metadata (brand/last4/expiry) — no raw card
+/// data is ever sent here.
 Future<ApiResponse<PaymentCard>> createPaymentCard({
-  required String brand,
-  required String lastFour,
-  required String cardNumberHash,
-  required String expiryMonth,
-  required String expiryYear,
-  required String cardholderName,
-  String? cvc,
+  required String paymentMethodId,
   bool? isDefault,
 }) async {
   final dio.Dio di = AppState.instance.dioService.dio;
@@ -21,13 +19,7 @@ Future<ApiResponse<PaymentCard>> createPaymentCard({
     request: () => di.post(
       kPaymentCardsUrl,
       data: {
-        'brand': brand,
-        'last_four': lastFour,
-        'card_number_hash': cardNumberHash,
-        'expiry_month': expiryMonth,
-        'expiry_year': expiryYear,
-        'cardholder_name': cardholderName,
-        if (cvc != null && cvc.isNotEmpty) 'cvc': cvc,
+        'payment_method_id': paymentMethodId,
         if (isDefault != null) 'is_default': isDefault,
       },
     ),

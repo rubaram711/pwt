@@ -91,17 +91,28 @@ class _ProductScreenState extends State<ProductScreen> {
           else ...[
             Builder(builder: (_) {
               final user = AppState.instance.user;
+              final isQuoteOnly = p.isQuoteOnly == true;
               final int effectiveView;
               final bool showSegmented;
-              if (user == null) {
+              final bool showLockedBusiness;
+              if (isQuoteOnly) {
+                // Quote-only products have no individual buy/rent option at
+                // all, so there's nothing to switch between.
+                effectiveView = 1;
+                showSegmented = false;
+                showLockedBusiness = user == null;
+              } else if (user == null) {
                 effectiveView = _view;
                 showSegmented = true;
+                showLockedBusiness = false;
               } else if (user.isCompany) {
                 effectiveView = 1;
                 showSegmented = false;
+                showLockedBusiness = false;
               } else {
                 effectiveView = 0;
                 showSegmented = false;
+                showLockedBusiness = false;
               }
               return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 if (showSegmented) ...[
@@ -111,6 +122,20 @@ class _ProductScreenState extends State<ProductScreen> {
                       options: const ['Individual — Buy / Rent', 'Company — Request Quote'],
                       index: _view,
                       onChanged: (i) => setState(() => _view = i),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                ] else if (showLockedBusiness) ...[
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(AppRadius.sm), border: Border.all(color: AppColors.line), boxShadow: AppShadow.card),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        const Icon(Icons.apartment_outlined, size: 16, color: AppColors.blue700),
+                        const SizedBox(width: 7),
+                        Text('Company — Request Quote', style: AppText.label.copyWith(color: AppColors.ink900)),
+                      ]),
                     ),
                   ),
                   const SizedBox(height: 22),

@@ -922,32 +922,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final phone = '$_countryCode${_phone.text.trim()}';
     final dateStr = _deliveryDate != null ? _dateStr(_deliveryDate!) : null;
 
-    // A new card is captured entirely by Stripe's embedded Card Element —
-    // its real digits never touch our backend. /orders still requires
-    // card_number/card_expiry to be present for payment_method=card, so we
-    // send inert placeholders here; the actual charge is authorized purely
-    // via Stripe's client_secret + confirmCardPayment below, never from
-    // these fields.
     final usingSavedCard = _pay == 0 && !_enterNewCard && _selectedCardId != null;
-    String? cardNumber;
-    String? cardExpiry;
-    String? cardCvc;
-    if (_pay == 0) {
-      if (usingSavedCard) {
-        final saved = _cards.where((c) => c.id == _selectedCardId).firstOrNull;
-        if (saved != null) {
-          cardNumber = saved.cardNumberHash ?? saved.lastFour;
-          cardExpiry = '${saved.expiryMonth}/${saved.expiryYear}';
-          cardCvc    = saved.cvc;
-        }
-      } else {
-        // Must satisfy the backend's format validation (digits only), but
-        // is never actually used to charge anything — Stripe's client_secret
-        // confirmation below is what authorizes the real card.
-        cardNumber = '4242424242424242';
-        cardExpiry = '12/99';
-        cardCvc    = '000';
+
+    // /orders now takes a real stripe_payment_method_id — never raw card
+    // digits. A saved card already has one; a new card must be tokenized
+    // with Stripe right here, before the order is placed, against the
+    // still-mounted Card Element.
+    String? stripePaymentMethodId;
+    if (usingSavedCard) {
+      stripePaymentMethodId = _cards.where((c) => c.id == _selectedCardId).firstOrNull?.stripePaymentMethodId;
+    } else if (_pay == 0) {
+      final cardState = _stripeCardKey.currentState;
+      final tokenizeResult = cardState != null
+          ? await cardState.createPaymentMethod(cardholderName: _name.text.trim())
+          : StripePaymentMethodResult(success: false, errorMessage: 'Card details were lost — please re-enter your card and try again.');
+      if (!mounted) return;
+      if (!tokenizeResult.success || tokenizeResult.paymentMethodId == null) {
+        setState(() { _placing = false; _placeError = tokenizeResult.errorMessage ?? 'Failed to process card details. Please try again.'; });
+        return;
       }
+      stripePaymentMethodId = tokenizeResult.paymentMethodId;
     }
 
     final result = await placeOrder(
@@ -960,9 +954,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       term:              _mode,
       paymentMethod:     payMethod,
       deliveryTimeSlot:  slotKey,
-      cardNumber:        cardNumber,
-      cardExpiry:        cardExpiry,
-      cardCvc:           cardCvc,
+      stripePaymentMethodId: stripePaymentMethodId,
       promoCode:         s.appliedPromoCode,
     );
 
@@ -981,6 +973,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final payRes = await initiatePayment(
       orderId: order.id,
       paymentMethod: payMethod,
+      paymentCardId: usingSavedCard ? _selectedCardId : null,
+      paymentMethodId: usingSavedCard ? null : stripePaymentMethodId,
     );
 
     if (!mounted) return;
@@ -999,29 +993,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    final clientSecret = payRes.data!.clientSecret;
-    if (_pay == 0 && !usingSavedCard && clientSecret != null && clientSecret.isNotEmpty) {
-      // New card: confirm the PaymentIntent right here against the still-
-      // mounted Stripe Card Element — no redirect, no polling needed.
-      setState(() => _confirmingCard = true);
-      final cardState = _stripeCardKey.currentState;
-      final cardResult = cardState != null
-          ? await cardState.confirmPayment(clientSecret)
-          : StripeCardResult(success: false, errorMessage: 'Card details were lost — please re-enter your card and try again.');
-      if (!mounted) return;
-      setState(() => _confirmingCard = false);
-      if (!cardResult.success) {
-        setState(() => _placeError = cardResult.errorMessage ?? 'Payment failed. Please try again.');
-        return;
-      }
-      await s.clearBackendCart();
-      if (!mounted) return;
-      Navigator.of(context).pushNamed('/confirmation', arguments: order);
-      return;
-    }
-
-    // Saved card / Apple Pay / Google Pay: no client-side confirmation path
-    // wired up yet — fall back to the hosted-checkout redirect + poll flow.
+    // Every payment method — new card, saved card, Apple Pay, Google Pay —
+    // now finishes the same way: the backend already has the payment
+    // method (stripe_payment_method_id for a new card, payment_card_id for
+    // a saved one), so the client just falls back to the hosted-checkout
+    // redirect + poll flow.
     setState(() {
       _payment = payRes.data;
       _pendingOrder = order;
